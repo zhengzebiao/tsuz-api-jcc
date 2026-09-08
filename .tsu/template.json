@@ -1,0 +1,9 @@
+{
+  "template": {
+    "name": "python-app",
+    "version": "1.0.0",
+    "source": "remote",
+    "repository": "zhengzebiao/tsu"
+  },
+  "generatedAt": "2026-09-08T07:20:26.791Z"
+}
