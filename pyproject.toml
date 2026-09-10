@@ -27,7 +27,7 @@ dev = [
 ]
 
 [tool.pdm.scripts]
-dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8001"
 lint = "ruff check ."
 test = "pytest"
 migrate = "alembic upgrade head"

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://test_user:test_password@localhost:5432/test_app"
     db_sslmode: str = "disable"
     redis_url: str = "redis://localhost:6379/0"
+    main_redis_url: str | None = None
     redis_key_prefix: str = "auth:test:"
 
     jwt_algorithm: str = "RS256"

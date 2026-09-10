@@ -8,3 +8,8 @@ from app.core.config import settings
 @lru_cache
 def get_redis() -> Redis:
     return Redis.from_url(settings.redis_url, decode_responses=True)
+
+
+@lru_cache
+def get_main_redis() -> Redis:
+    return Redis.from_url(settings.main_redis_url or settings.redis_url, decode_responses=True)

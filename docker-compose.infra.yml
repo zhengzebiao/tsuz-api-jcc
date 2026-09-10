@@ -1,30 +1,40 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ${POSTGRES_CONTAINER_NAME:-product-postgres}
+    container_name: ${POSTGRES_CONTAINER_NAME:-jcc-postgres-test}
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-app}
-      POSTGRES_USER: ${POSTGRES_USER:-app_user}
+      POSTGRES_DB: ${POSTGRES_DB:-tsuz_jcc}
+      POSTGRES_USER: ${POSTGRES_USER:-jcc_test}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-15433}:5432"
     networks:
       - backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   redis:
     image: redis:7-alpine
-    container_name: ${REDIS_CONTAINER_NAME:-product-redis}
+    container_name: ${REDIS_CONTAINER_NAME:-jcc-redis-test}
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_PORT:-16380}:6379"
     networks:
       - backend
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 volumes:
   postgres_data:
@@ -32,4 +42,4 @@ volumes:
 
 networks:
   backend:
-    name: ${DOCKER_NETWORK_NAME:-product-backend}
+    name: ${DOCKER_NETWORK_NAME:-tsuz-api-jcc-test}
