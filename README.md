@@ -384,6 +384,28 @@ Deploy and rollback do not run migrations automatically.
 Product does not auto-run seed. The Migrate workflow also does not run seed. Use `pdm run seed` for local development, and execute product seed only as an explicit reviewed operation after confirming it is idempotent and safe for real data.
 
 
+## Official TFT Data Snapshots
+
+The repository keeps the official raw JSON snapshot for each downloaded version under `raw/<version>-<season>/`. The sync command first checks the current `自然之力` version from the official configuration, then downloads and validates all required payloads. A complete existing snapshot is skipped; older version directories are retained.
+
+```bash
+pdm run sync-lol-data
+```
+
+The command is a one-shot process and is safe to invoke from cron or macOS `launchd`. It uses a lock file to prevent overlapping runs, writes to a temporary directory, and publishes a new snapshot only after every payload and the manifest validate successfully. For a separate test directory:
+
+```bash
+pdm run sync-lol-data --raw-dir /path/to/data/raw --timeout 30 --retries 2
+```
+
+The scheduler itself is intentionally not committed to the repository. Configure cron/launchd to run the command from the repository checkout, capture stdout/stderr, and alert on its non-zero exit status. For example, after replacing the paths with deployment-specific absolute paths, a cron entry that checks hourly is:
+
+```cron
+17 * * * * cd /path/to/tsuz-api-jcc && /path/to/pdm run sync-lol-data >> /var/log/tsuz-api-jcc-data-sync.log 2>&1
+```
+
+A macOS `launchd` job should use the same one-shot command as `ProgramArguments` (`/path/to/pdm`, `run`, `sync-lol-data`) with `WorkingDirectory` set to the checkout, and configure `StartInterval` to `3600`. Do not schedule the Python module with an in-process loop; let the scheduler start a fresh process each time. A lock conflict exits with status `0` and prints `sync skipped`, because another run is already active; alert only on a non-zero status. This sync only preserves raw source data; structured database ingestion and embedding generation are separate steps described in [the RAG data design](docs/jcc-ai-agent-rag-data-design.md).
+
 ## Scripts
 
 ```bash
@@ -392,6 +414,7 @@ pdm run lint
 pdm run migrate
 pdm run seed
 pdm run alembic-current
+pdm run sync-lol-data
 ```
 
 ## Project Structure

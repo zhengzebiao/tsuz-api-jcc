@@ -1,5 +1,7 @@
 __pycache__/
 *.py[cod]
+raw/.sync.lock
+raw/.sync-*/
 .pytest_cache/
 .ruff_cache/
 .venv/
