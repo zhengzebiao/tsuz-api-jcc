@@ -1,5 +1,13 @@
 # 应用间权限管理设计：调用方 → 目标方 → Scope
 
+> 第一阶段状态：部分完成。代码与默认自动化测试已落地；真实隔离迁移和双向 HTTP smoke 待专用资源与显式授权。
+>
+> 第一阶段计划：[APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PHASE_1_PLAN.md](APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PHASE_1_PLAN.md)
+>
+> 第一阶段执行记录：[APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PHASE_1_EXECUTION.md](APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PHASE_1_EXECUTION.md)
+>
+> main 总实施方案：[APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PLAN.md](../../tsuz-api-main/plan/APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PLAN.md)
+
 ## 1. 文档目的
 
 本文说明在 `tsuz-api-main` 作为统一认证与授权中心、`tsuz-api-jcc` 及未来多个子应用相互调用的场景下，如何围绕 `app_id`、`app_secret` 和 Service Token 管理应用间权限。

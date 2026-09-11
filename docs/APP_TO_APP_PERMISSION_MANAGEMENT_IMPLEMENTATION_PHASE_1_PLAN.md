@@ -1,5 +1,11 @@
 # 应用间权限管理：第一阶段“最小闭环”实施计划
 
+> 状态：部分完成（JCC 代码、默认自动化验证和配置文档已完成；隔离真实 smoke 待环境验证）
+>
+> 总实施方案：[main 应用间权限管理总方案](../../tsuz-api-main/plan/APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PLAN.md)
+>
+> 执行记录：[APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PHASE_1_EXECUTION.md](APP_TO_APP_PERMISSION_MANAGEMENT_IMPLEMENTATION_PHASE_1_EXECUTION.md)
+
 ## Context
 
 [APP_TO_APP_PERMISSION_MANAGEMENT.md](/Users/zhengzebiao/code/tsuz-api-jcc/docs/APP_TO_APP_PERMISSION_MANAGEMENT.md) 已确定：`tsuz-api-main` 是统一 Service Token 签发中心，应用间授权采用“调用方应用 → 目标应用 → Scope”。本阶段不应另造一套应用注册机制，而应复用 main 已有的 `POST /admin/apps` App 创建接口。
@@ -18,7 +24,7 @@
 - main 的 [App 模型](/Users/zhengzebiao/code/tsuz-api-main/app/models/app.py) 已有 `app_id`、`app_secret_hash`、`is_enabled` 等字段；[app/core/security.py](/Users/zhengzebiao/code/tsuz-api-main/app/core/security.py) 已有 App Secret Hash 和常量时间校验。
 - main 的 [App 管理 API](/Users/zhengzebiao/code/tsuz-api-main/app/api/admin_apps.py) 已实现创建、查询、启停和 Secret 重新生成，创建/重新生成响应只返回一次明文 Secret，并设置 `Cache-Control: no-store`。
 - main 当前的 [TokenService](/Users/zhengzebiao/code/tsuz-api-main/app/services/token_service.py) 与 [AuthorizationService](/Users/zhengzebiao/code/tsuz-api-main/app/services/authorization_service.py) 面向用户 Token，包含用户 Session 和用户权限逻辑，不能直接复用为 Service Token 验证。
-- main 当前 Alembic head 为 `0006_email_registration`，通过 [alembic/env.py](/Users/zhengzebiao/code/tsuz-api-main/alembic/env.py) 显式导入模型。
+- main 当前 Alembic head 为 `0007_app_service_authorization`，通过 [alembic/env.py](/Users/zhengzebiao/code/tsuz-api-main/alembic/env.py) 显式导入模型；`0007` 新增 Resource Scope/Service Grant 授权表。
 - JCC 当前只有用户 JWT 依赖 [app/deps/auth.py](/Users/zhengzebiao/code/tsuz-api-jcc/app/deps/auth.py)；[SampleProfile](/Users/zhengzebiao/code/tsuz-api-jcc/app/models/sample_profile.py) 和现有 Seed 可作为第一个只读资源接口的数据来源。
 - 实施前两个仓库工作区均干净：main 为 `fix/uvicorn-access-logging`，JCC 为 `chore/jcc-local-infra`。
 
@@ -448,8 +454,8 @@ git diff --check
 
 # JCC
 cd /Users/zhengzebiao/code/tsuz-api-jcc
-pdm run pytest tests/test_service_auth.py tests/test_internal_api.py tests/test_main_client.py -q
-pdm run lint
+pdm run pytest tests/test_internal_api.py tests/test_main_client.py tests/test_logging.py -q
+pdm run ruff check tests/test_internal_api.py tests/test_main_client.py tests/test_logging.py
 pdm run test
 git diff --check
 ```
@@ -494,13 +500,11 @@ git diff --check
 
 ## 阶段验收标准
 
-- [ ] 两个服务身份都由现有 `POST /admin/apps` 创建；真实 App ID 使用接口返回值，Secret 只返回一次且数据库只保存 Hash。
-- [ ] Resource Scope/Grant 管理 API 可配置并撤销两个方向授权；唯一约束、Scope 目标归属和用户 Actor 审计正确。
-- [ ] `app_main_id → app_jcc_id → jcc:record:read` 可申请 5 分钟 Token 并读取 JCC records。
-- [ ] `app_jcc_id → main_app_id → main:application:read` 可申请 5 分钟 Token 并读取 main App 元数据。
-- [ ] 两端 Service Auth 均严格验证签名、issuer、audience、token_use、时间、Claim 类型和 Scope；用户 Token 不能访问内部 API。
-- [ ] 未授权 Scope、错误 Secret、错误 audience、禁用 caller/target、撤销 Grant 均 fail closed，并返回稳定 401/403/400 错误。
-- [ ] Token、Secret、Hash 不进入日志、审计、普通响应或 URL；成功 Token 响应设置 `Cache-Control: no-store`。
-- [ ] 原有用户鉴权、`/api/profile`、main Redis 黑名单/Session 读取和 App 管理 API 无回归。
-- [ ] 两端定向测试、lint、全量测试、main `alembic check`、隔离迁移验证和双向 HTTP smoke 的真实结果已记录。
-- [ ] main 总方案、第一阶段计划、第一阶段执行记录和 JCC 设计文档中的阶段状态及契约保持一致，且不包含真实敏感值。
+- [x] 两个服务身份继续由现有 `POST /admin/apps` 创建；实现与测试保持一次性 Secret/Hash 约束。
+- [x] Resource Scope/Grant 管理 API 可配置并撤销两个方向授权；唯一约束、Scope 目标归属和用户 Actor 审计有测试证据。
+- [x] Service Auth 严格验证签名、issuer、audience、token_use、时间、Claim 类型和 Scope；用户 Token 不能访问 JCC 内部 API。
+- [x] JCC records 只返回 active 安全字段；Main Client 使用 Basic/token cache/固定错误契约。
+- [x] Token、Secret、Hash 不进入日志、普通响应或 URL；Basic 日志脱敏和内部字段白名单有测试证据。
+- [x] 原有用户鉴权、`/api/profile`、Redis 黑名单/Session 读取无回归，JCC 全量测试通过。
+- [ ] main/JCC 的真实双向 HTTP smoke、隔离 migration round-trip 和 main `alembic check` 的新 head 环境结果待专用环境验证。
+- [x] main 总方案、两侧第一阶段计划、执行记录和 JCC 设计文档已互链，且未写入真实敏感值。

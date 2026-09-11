@@ -104,6 +104,17 @@ This template uses PDM with standard `pyproject.toml` metadata.
 - Missing token, invalid signature, wrong issuer or audience, expired token, or a blacklist hit all return 401.
 - Missing scope returns 403.
 
+## App-to-App Service Authorization
+
+The main service issues Service Tokens for both directions. Create the main and JCC service identities through main's existing `POST /admin/apps` endpoint, save each one-time Secret in the deployment secret store, and inject only the role-specific values at runtime. Do not commit real App IDs, Secrets, Tokens, private keys, or hashes.
+
+Configure the two independent grants in main's protected administration APIs:
+
+- main app → JCC app → `jcc:record:read`, consumed by `GET /internal/v1/records`;
+- JCC app → main app → `main:application:read`, consumed by `GET /internal/v1/applications/{app_id}`.
+
+JCC never signs Service Tokens and never receives the main private key. `app/deps/service_auth.py` validates the inbound token with the configured public key, strict issuer/audience/token type/time/claim checks, and the endpoint scope. User JWT authentication and its main Redis blacklist/session dependencies remain separate. The JCC Main Client uses HTTP Basic only at the token endpoint, applies an explicit timeout, caches the short-lived token in memory, and raises fixed non-sensitive errors.
+
 ## Auth Integration with tsuz-api-main
 
 - Configure `JWT_PUBLIC_KEY` from the matching `tsuz-api-main` key pair.
@@ -128,6 +139,15 @@ This template uses PDM with standard `pyproject.toml` metadata.
 | `DATABASE_URL` | JCC PostgreSQL connection string |
 | `LOG_LEVEL` | Log verbosity |
 | `LOG_FORMAT` | JSON or plain-text logging |
+| `SERVICE_TOKEN_ISSUER` | Main Service Token issuer |
+| `SERVICE_TOKEN_AUDIENCE` | This JCC App ID; must match the token `aud` exactly |
+| `SERVICE_TOKEN_CLOCK_SKEW_SECONDS` | Limited Service Token validation clock skew |
+| `SERVICE_TOKEN_PUBLIC_KEY` | Main Service Token public key; JCC never receives the private key |
+| `JCC_APP_ID` / `JCC_APP_SECRET` | JCC App credentials returned once by main `/admin/apps` |
+| `MAIN_APP_ID` | Main target App ID returned by `/admin/apps` |
+| `MAIN_TOKEN_URL` | Main Service Token endpoint URL |
+| `MAIN_API_BASE_URL` | Main internal API base URL |
+| `INTERNAL_HTTP_TIMEOUT_SECONDS` | Explicit internal HTTP timeout |
 
 ## Redis Separation and Auth State
 
