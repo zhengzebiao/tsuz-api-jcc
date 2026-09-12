@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     main_api_base_url: str = "http://127.0.0.1:8000"
     internal_http_timeout_seconds: float = 10.0
 
+    jcc_data_raw_dir: str = "raw"
+    jcc_data_mode: str = "18"
+    jcc_data_mode_name: str = "自然之力"
+    jcc_data_sync_timeout_seconds: float = 30.0
+    jcc_data_sync_retries: int = 2
+
     token_blacklist_prefix: str = "auth:test:blacklist:jti:"
     session_prefix: str = "auth:test:session:"
 

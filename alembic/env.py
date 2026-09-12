@@ -1,9 +1,9 @@
 from logging.config import fileConfig
 
 from alembic import context
-
 from app.core.config import settings
 from app.core.database import Base
+from app.jcc_data import models as jcc_models  # noqa: F401
 from app.models import app_setting, sample_profile  # noqa: F401
 
 config = context.config

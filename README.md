@@ -384,27 +384,31 @@ Deploy and rollback do not run migrations automatically.
 Product does not auto-run seed. The Migrate workflow also does not run seed. Use `pdm run seed` for local development, and execute product seed only as an explicit reviewed operation after confirming it is idempotent and safe for real data.
 
 
-## Official TFT Data Snapshots
+## Official JCC Data Snapshots
 
-The repository keeps the official raw JSON snapshot for each downloaded version under `raw/<version>-<season>/`. The sync command first checks the current `自然之力` version from the official configuration, then downloads and validates all required payloads. A complete existing snapshot is skipped; older version directories are retained.
+The repository keeps every complete official raw snapshot under `raw/<version>-<season>[-r<N>]/` and imports it as an immutable structured database snapshot. The command checks the current `自然之力` version, reuses or atomically publishes raw data, validates all entity relationships, writes the complete `jcc_*` dataset in one transaction, and then switches `jcc_current_snapshots`.
 
-```bash
-pdm run sync-lol-data
-```
-
-The command is a one-shot process and is safe to invoke from cron or macOS `launchd`. It uses a lock file to prevent overlapping runs, writes to a temporary directory, and publishes a new snapshot only after every payload and the manifest validate successfully. For a separate test directory:
+Apply the latest Alembic migration before the first import:
 
 ```bash
-pdm run sync-lol-data --raw-dir /path/to/data/raw --timeout 30 --retries 2
+pdm run migrate
+pdm run sync-jcc-data
 ```
 
-The scheduler itself is intentionally not committed to the repository. Configure cron/launchd to run the command from the repository checkout, capture stdout/stderr, and alert on its non-zero exit status. For example, after replacing the paths with deployment-specific absolute paths, a cron entry that checks hourly is:
+A normal run reuses the newest complete raw revision instead of redownloading it. Use an explicit force refresh to discover official changes that keep the same version number:
 
-```cron
-17 * * * * cd /path/to/tsuz-api-jcc && /path/to/pdm run sync-lol-data >> /var/log/tsuz-api-jcc-data-sync.log 2>&1
+```bash
+pdm run sync-jcc-data --force-refresh
+pdm run sync-jcc-data --raw-dir /path/to/data/raw --timeout 30 --retries 2
 ```
 
-A macOS `launchd` job should use the same one-shot command as `ProgramArguments` (`/path/to/pdm`, `run`, `sync-lol-data`) with `WorkingDirectory` set to the checkout, and configure `StartInterval` to `3600`. Do not schedule the Python module with an in-process loop; let the scheduler start a fresh process each time. A lock conflict exits with status `0` and prints `sync skipped`, because another run is already active; alert only on a non-zero status. This sync only preserves raw source data; structured database ingestion and embedding generation are separate steps described in [the RAG data design](docs/jcc-ai-agent-rag-data-design.md).
+Force refresh downloads the complete resource set, calculates a canonical SHA-256 content hash, and compares every historical revision for that version. Matching content reuses the existing revision; new content is atomically published as the next `-rN` directory. Published raw revisions and structured snapshots are never overwritten or automatically deleted.
+
+If raw publication succeeds but parsing or database import fails, the raw revision remains available and the old current database snapshot stays active. Running the same command again reuses that raw revision and retries the complete import. Do not delete raw directories to trigger updates, and do not schedule overlapping processes for the same raw directory; the command uses a file lock as a final safety boundary.
+
+The scheduler itself is intentionally not committed to the repository. Configure cron, `launchd`, or another service manager to invoke the one-shot `pdm run sync-jcc-data`, capture stdout/stderr, and alert on a non-zero exit. A lock conflict exits with status 0 as a skipped run. The command logs version, revision, hash prefix, directory and result without logging raw payloads or database credentials.
+
+`JCC_DATA_RAW_DIR`, `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide non-secret defaults; explicit CLI options override path, timeout and retry values. This phase does not expose raw or structured data over `/jcc/*`; the user-token read API is a separate phase.
 
 ## Scripts
 
@@ -414,7 +418,7 @@ pdm run lint
 pdm run migrate
 pdm run seed
 pdm run alembic-current
-pdm run sync-lol-data
+pdm run sync-jcc-data
 ```
 
 ## Project Structure
