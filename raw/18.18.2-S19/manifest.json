@@ -1,0 +1,61 @@
+{
+  "mode": "18",
+  "mode_name": "自然之力",
+  "season": "S19",
+  "version": "18.18.2",
+  "version_start_time": "2026-09-10",
+  "set_id": "18",
+  "source_updated_at": "2026-09-09 17:43:34",
+  "sources": {
+    "versiondataconfig": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/config/versiondataconfig.js",
+      "file": "versiondataconfig.json",
+      "record_count": 191
+    },
+    "chess": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/chess.js",
+      "file": "chess.json",
+      "record_count": 345
+    },
+    "race": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/race.js",
+      "file": "race.json",
+      "record_count": 24
+    },
+    "job": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/job.js",
+      "file": "job.json",
+      "record_count": 12
+    },
+    "trait": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/trait.js",
+      "file": "trait.json",
+      "record_count": 90
+    },
+    "equip": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/equip.js",
+      "file": "equip.json",
+      "record_count": 157
+    },
+    "hex": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/hex.js",
+      "file": "hex.json",
+      "record_count": 257
+    },
+    "adventure": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/adventure.js",
+      "file": "adventure.json",
+      "record_count": 350
+    },
+    "galaxy": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlk/js/18/18.18.2-S19/galaxy.js",
+      "file": "galaxy.json",
+      "record_count": 20
+    },
+    "lineup_detail_total": {
+      "url": "https://game.gtimg.cn/images/lol/act/jkzlkauto/json/lineupJson/m19/11/18/lineup_detail_total.json",
+      "file": "lineup_detail_total.json",
+      "record_count": 47
+    }
+  }
+}

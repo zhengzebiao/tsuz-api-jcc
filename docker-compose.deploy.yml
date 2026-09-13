@@ -1,11 +1,11 @@
 services:
   api:
     image: ${DOCKER_IMAGE_NAME}:${APP_VERSION}
-    container_name: ${CONTAINER_NAME:-backend-api}
+    container_name: ${CONTAINER_NAME:-jcc-api}
     env_file:
       - .env
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "${APP_PORT:-8001}:8000"
     networks:
       - backend
     restart: unless-stopped
@@ -23,9 +23,9 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: ${NGINX_CONTAINER_NAME:-backend-api-nginx}
+    container_name: ${NGINX_CONTAINER_NAME:-jcc-api-nginx}
     ports:
-      - "${NGINX_PORT:-8080}:80"
+      - "${NGINX_PORT:-8081}:80"
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -37,4 +37,4 @@ services:
 networks:
   backend:
     external: true
-    name: ${DOCKER_NETWORK_NAME:-product-backend}
+    name: ${DOCKER_NETWORK_NAME:-tsuz-api-main-test}

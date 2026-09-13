@@ -17,6 +17,7 @@ _redacting_factory_configured = False
 
 _PEM_KEY_RE = re.compile(r"-----BEGIN [A-Z ]*KEY-----.*?-----END [A-Z ]*KEY-----", re.DOTALL)
 _BEARER_RE = re.compile(r"(?i)Authorization:\s*Bearer\s+[^\s,;]+")
+_BASIC_RE = re.compile(r"(?i)Authorization:\s*Basic\s+[^\s,;]+")
 _JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 _FIELD_RE = re.compile(
     r"(?i)\b(password|access_token|refresh_token|jwt_private_key|jwt_public_key|github_[a-z0-9_]*secret)"
@@ -34,6 +35,7 @@ def redact_sensitive(value: object) -> object:
         return value
     redacted = _PEM_KEY_RE.sub("[REDACTED_KEY]", value)
     redacted = _BEARER_RE.sub("Authorization: Bearer [REDACTED]", redacted)
+    redacted = _BASIC_RE.sub("Authorization: Basic [REDACTED]", redacted)
     redacted = _JWT_RE.sub("[REDACTED_JWT]", redacted)
     redacted = _JSON_FIELD_RE.sub(r"\1[REDACTED]\3", redacted)
     redacted = _FIELD_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", redacted)
@@ -82,12 +84,21 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             response.headers[settings.request_id_header] = request_id
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", request.url.path)
+            context = getattr(request.state, "jcc_context", {})
             logging.getLogger("app.request").info(
-                "request completed method=%s path=%s status_code=%s duration_ms=%.2f",
+                "request completed method=%s path=%s route=%s status_code=%s duration_ms=%.2f "
+                "snapshot_version=%s snapshot_revision=%s limit=%s offset=%s",
                 request.method,
                 request.url.path,
+                route_path,
                 response.status_code,
                 (time.perf_counter() - started_at) * 1000,
+                context.get("snapshot_version", ""),
+                context.get("snapshot_revision", ""),
+                context.get("limit", ""),
+                context.get("offset", ""),
             )
             return response
         finally:

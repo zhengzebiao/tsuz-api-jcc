@@ -16,7 +16,8 @@ dependencies = [
   "pyjwt[crypto]>=2.10.1",
   "passlib[bcrypt]>=1.7.4",
   "bcrypt>=4.0.1,<5.0.0",
-  "email-validator>=2.2.0"
+  "email-validator>=2.2.0",
+  "httpx>=0.28.1",
 ]
 
 [dependency-groups]
@@ -27,12 +28,14 @@ dev = [
 ]
 
 [tool.pdm.scripts]
-dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8001"
 lint = "ruff check ."
 test = "pytest"
 migrate = "alembic upgrade head"
 alembic-current = "alembic current"
 seed = "python -m app.seed"
+sync-jcc-data = "python -m scripts.sync_jcc_data"
+report-permissions = "python -m scripts.report_permissions"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

@@ -2,7 +2,6 @@ import logging
 
 from app.core.logging import redact_sensitive
 
-
 RAW_JWT = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiIxIn0.signature"
 RAW_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
 secret-key-material
@@ -44,6 +43,15 @@ def test_security_logs_redact_sensitive_values(caplog) -> None:
     assert "test_password" not in caplog.text
     assert "secret-key-material" not in caplog.text
     assert "[REDACTED" in caplog.text
+
+
+def test_security_logs_redact_basic_authorization() -> None:
+    raw_basic = "Authorization: Basic YXBwX2pjYzpzZWNyZXQ="
+
+    redacted = redact_sensitive(raw_basic)
+
+    assert raw_basic not in redacted
+    assert redacted == "Authorization: Basic [REDACTED]"
 
 
 def test_redact_sensitive_handles_json_and_env_style_secrets() -> None:
