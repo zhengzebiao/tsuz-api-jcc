@@ -42,4 +42,5 @@ volumes:
 
 networks:
   backend:
-    name: ${DOCKER_NETWORK_NAME:-tsuz-api-jcc-test}
+    external: true
+    name: ${DOCKER_NETWORK_NAME:-tsuz-api-main-test}

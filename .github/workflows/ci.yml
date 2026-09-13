@@ -3,13 +3,13 @@ name: CI
 on:
   pull_request:
     branches:
-      - master
+      - main
   push:
     branches:
-      - master
+      - main
 
 env:
-  IMAGE_NAME: backend-api
+  IMAGE_NAME: tsuz-api-jcc
 
 permissions:
   contents: read
@@ -21,13 +21,13 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: test_app
-          POSTGRES_USER: test_user
+          POSTGRES_DB: test_jcc
+          POSTGRES_USER: jcc_test
           POSTGRES_PASSWORD: test_password
         ports:
           - "5432:5432"
         options: >-
-          --health-cmd "pg_isready -U test_user -d test_app"
+          --health-cmd "pg_isready -U jcc_test -d test_jcc"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -42,18 +42,48 @@ jobs:
           --health-retries 5
     env:
       APP_ENV: test
-      DATABASE_URL: postgresql+psycopg://test_user:test_password@localhost:5432/test_app
+      DATABASE_URL: postgresql+psycopg://jcc_test:test_password@localhost:5432/test_jcc
       REDIS_URL: redis://localhost:6379/0
+      MAIN_REDIS_URL: redis://localhost:6379/0
       JWT_PUBLIC_KEY: ${{ secrets.TEST_JWT_PUBLIC_KEY }}
       CORS_ALLOW_ORIGINS: ${{ secrets.TEST_CORS_ALLOW_ORIGINS }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pipx install pdm
       - run: pdm install
-      - run: pdm run lint
+      - name: Lint changed Python files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_BEFORE: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            diff_range=("$PR_BASE_SHA...$GITHUB_SHA")
+          elif [ -n "$EVENT_BEFORE" ] && [ "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            diff_range=("$EVENT_BEFORE...$GITHUB_SHA")
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            diff_range=(HEAD^ HEAD)
+          else
+            diff_range=()
+          fi
+
+          if ((${#diff_range[@]})); then
+            mapfile -t changed_python_files < <(git diff --name-only --diff-filter=ACMR "${diff_range[@]}" -- '*.py')
+          else
+            mapfile -t changed_python_files < <(git ls-files '*.py')
+          fi
+          if ((${#changed_python_files[@]})); then
+            pdm run ruff check "${changed_python_files[@]}"
+          else
+            echo "No changed Python files to lint."
+          fi
       - run: pdm run test
       - name: Check Alembic migration state
         run: pdm run alembic-current

@@ -25,21 +25,23 @@ FastAPI resource service with PostgreSQL, Redis blacklist checks, RS256 JWT veri
 
 ## Local Development
 
-Run PostgreSQL and both Redis instances in Docker, but run the JCC API directly on the host so reloads and tracebacks stay simple.
+Run PostgreSQL and both Redis instances in Docker, but run the JCC API directly on the host so reloads and tracebacks stay simple. The main application owns the shared Docker network; JCC only joins it and never creates or removes it.
 
-First make sure the `tsuz-api-main` infrastructure is running. Its Redis at `127.0.0.1:16379` remains the source of truth for access-token blacklist and session revocation state:
+First make sure the `tsuz-api-main` Init/infrastructure setup is complete. Its Redis at `127.0.0.1:16379` remains the source of truth for access-token blacklist and session revocation state:
 
 ```bash
 cd ../tsuz-api-main
+# Run the main application's local initializer or create its test network first.
 docker compose --env-file .env -f docker-compose.infra.yml up -d
 ```
 
-Then configure and start the JCC infrastructure. Its PostgreSQL and Redis use separate ports and persistent volumes:
+Then configure and start the JCC infrastructure. Its PostgreSQL and Redis use separate ports, persistent volumes, and the existing `tsuz-api-main-test` network:
 
 ```bash
 cd ../tsuz-api-jcc
 pdm install
-cp .env.test.example .env  # first setup only; then copy JWT_PUBLIC_KEY from tsuz-api-main/.env
+cp .env.test.example .env  # first setup only; then copy matching public keys and app settings
+docker compose --env-file .env -f docker-compose.infra.yml config
 docker compose --env-file .env -f docker-compose.infra.yml up -d
 pdm run migrate
 pdm run seed
@@ -92,10 +94,11 @@ This template uses PDM with standard `pyproject.toml` metadata.
 
 ## Environment Files
 
-- `.env.test.example` is the non-secret template for the host-side local API workflow. It points to JCC PostgreSQL on `15433`, JCC Redis on `16380`, and main Redis on `16379`.
-- Copy `.env.test.example` to the ignored `.env` file and replace the public-key placeholder with `JWT_PUBLIC_KEY` from the matching `tsuz-api-main` environment.
-- `.env.product.example` disables public docs by default. Existing deployments that do not set `MAIN_REDIS_URL` continue to use `REDIS_URL` for auth state until their deployment configuration is migrated explicitly.
-- Use different PostgreSQL databases, JCC Redis instances, JWT keys, issuers, audiences, and GitHub Secrets for test and product.
+- `.env.test.example` is the non-secret template for the host-side local API workflow. It points to JCC PostgreSQL on `15433`, JCC Redis on `16380`, main Redis on `16379`, and joins the existing `tsuz-api-main-test` network.
+- Copy `.env.test.example` to the ignored `.env` file and replace public-key/app-credential placeholders with values from the matching `tsuz-api-main` environment.
+- `.env.product.example` disables public docs by default and uses the independently managed JCC PostgreSQL/Redis containers on the shared network (default `tsuz-api-main-prod`).
+- `.env.deploy.example` documents the remote runtime `.env`, Compose project, environment-specific service names, and the Variables/Secrets consumed by Init and Deploy. Real secrets must remain in GitHub Environment Secrets.
+- Use different PostgreSQL databases, JCC Redis instances, JWT keys, issuers, audiences, App credentials, and GitHub Secrets for test and product.
 
 ## Protected API Usage
 
@@ -177,7 +180,7 @@ JCC never signs Service Tokens and never receives the main private key. `app/dep
 - Use `alembic downgrade -1` or `alembic downgrade <revision_id>` only for development, test, or pre-release rollback drills.
 - Use `pdm run seed` to populate the default app settings and sample profile data.
 - The seed is idempotent and can be run repeatedly without duplicating rows.
-- Product does not auto-run seed; execute it manually only after reviewing the target environment.
+- Normal immutable product Deploy runs the idempotent seed automatically after migration; use the explicit Migrate workflow for reviewed revision-only maintenance and recovery.
 - Prefer immutable image rollback and forward-compatible repair migrations over relying on product database downgrade.
 
 ## Logging and Request ID
@@ -201,7 +204,7 @@ JCC never signs Service Tokens and never receives the main private key. `app/dep
 
 ## GitHub Actions, Secrets, and Environments
 
-The generated `.github/workflows/ci.yml` is CI-only: it runs PDM install, lint, pytest, Alembic state checks, and a Docker build. The generated `.github/workflows/deploy.yml` owns tag release and rollback.
+The generated `.github/workflows/ci.yml` is CI-only: it runs PDM install, lint, pytest, Alembic state checks, and a Docker build on `main`. The independent `.github/workflows/init.yml` checks that `tsuz-api-main` already created the shared network, then initializes only JCC PostgreSQL and Redis. The generated `.github/workflows/deploy.yml` owns immutable tag release, normal-release bootstrap, and rollback; Init does not trigger Deploy.
 
 ## Release Deploy and Rollback
 
@@ -211,52 +214,59 @@ This template includes a dedicated GitHub Actions Deploy workflow plus separate 
 | --- | --- | --- |
 | `docker-compose.yml` | Local development with api, PostgreSQL, Redis, and nginx | can be rebuilt freely |
 | `docker-compose.infra.yml` | Docker PostgreSQL and Redis for long-lived test/product infrastructure | start once and preserve volumes |
-| `docker-compose.deploy.yml` | Application release and rollback for api + nginx | updated for each image tag |
-| `.github/workflows/deploy.yml` | Tag release and workflow_dispatch rollback | runs on immutable image tags |
-| `.github/workflows/migrate.yml` | Manual Alembic migration workflow | runs only by reviewed workflow_dispatch |
+| `docker-compose.deploy.yml` | Application release and rollback for api + nginx on the main-owned shared network | updated for each image tag |
+| `.github/workflows/init.yml` | Independent manual JCC infrastructure initializer | checks the existing network and starts only JCC PostgreSQL/Redis |
+| `.github/workflows/deploy.yml` | Tag release, normal-release bootstrap, and workflow_dispatch rollback | runs on immutable image tags |
+| `.github/workflows/migrate.yml` | Manual Alembic maintenance workflow | runs only by reviewed workflow_dispatch |
 | `.env.deploy.example` | Example remote runtime environment | copy to real secrets/variables |
 
 ### GitHub Environments
 
-Create GitHub Environments named `test` and `product`. Product should use GitHub Environment protection rules and required reviewers before deployment or migration.
+Create GitHub Environments named `test` and `product`. Product may add environment protection rules and required reviewers according to the deployment policy.
 
 Recommended Variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `DOCKER_REGISTRY` | Registry host, for example `ghcr.io` |
-| `DOCKER_IMAGE_NAME` | Full image name, for example `ghcr.io/owner/backend-api` |
-| `DOCKER_REGISTRY_USERNAME` | Registry username, defaults to the GitHub actor when empty |
-| `DEPLOY_HOST` / `DEPLOY_PORT` / `DEPLOY_USER` / `DEPLOY_PATH` | SSH deployment target |
-| `CONTAINER_NAME` / `APP_PORT` / `NGINX_PORT` | Runtime container and port settings |
-| `APP_ENV` / `DOCKER_NETWORK_NAME` | Deployment environment and shared Docker network |
-| `JWT_ISSUER` / `JWT_AUDIENCE` | Token issuer and audience expected by the service |
-| `CORS_ALLOW_ORIGINS` | Comma-separated allowed origins |
+| `DOCKER_REGISTRY` / `DOCKER_IMAGE_NAME` | Registry host and full immutable JCC image path |
+| `DOCKER_REGISTRY_USERNAME` | Registry username |
+| `DEPLOY_HOST` / `DEPLOY_PORT` / `DEPLOY_USER` / `DEPLOY_PATH` | SSH deployment target and runtime directory |
+| `DEPLOY_REPO_PATH` / `DOCKER_BUILD_PLATFORM` | Dedicated server checkout path and build platform |
+| `CONTAINER_NAME` / `NGINX_CONTAINER_NAME` / `APP_PORT` / `NGINX_PORT` | JCC runtime container and port settings |
+| `APP_ENV` / `COMPOSE_PROJECT_NAME` / `DOCKER_NETWORK_NAME` | Environment, explicit Compose project, and main-owned shared network |
+| `SERVICE_NAME`, logging, runtime and JCC data variables | JCC runtime defaults and snapshot sync settings |
+| `JWT_ISSUER` / `JWT_AUDIENCE` / `SERVICE_TOKEN_*` | Token validation contract |
+| `JCC_APP_ID` / `MAIN_APP_ID` / `MAIN_*_URL` | App-to-app identity and main service endpoints |
+| `CORS_ALLOW_ORIGINS` / health variables | Browser policy and deploy health checks |
+| `POSTGRES_CONTAINER_NAME` / `POSTGRES_DB` / `POSTGRES_USER` / ports | JCC Init infrastructure settings |
+| `INIT_HEALTH_RETRIES` / `INIT_HEALTH_INTERVAL_SECONDS` | JCC Init readiness window |
 
 Recommended Secrets:
 
 | Secret | Purpose |
 | --- | --- |
 | `DOCKER_REGISTRY_TOKEN` | Push/pull token for Docker registry |
-| `SSH_PRIVATE_KEY` | SSH deploy key |
-| `SSH_KNOWN_HOSTS` | Optional pinned host keys |
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
-| `JWT_PUBLIC_KEY` | RS256 verification public key |
+| `SSH_PRIVATE_KEY` / `SSH_KNOWN_HOSTS` | SSH deploy key and optional pinned host keys |
+| `DATABASE_URL` / `REDIS_URL` / `MAIN_REDIS_URL` | JCC, JCC Redis, and main Redis connection strings |
+| `JWT_PUBLIC_KEY` / `SERVICE_TOKEN_PUBLIC_KEY` | Verification public keys; JCC receives no private key |
+| `JCC_APP_SECRET` | JCC App credential for calling main |
+| `POSTGRES_PASSWORD` | JCC PostgreSQL password consumed only by Init |
 
-
-- `tsuz-api-jcc` uses only `JWT_PUBLIC_KEY` for verification. Do not add `JWT_PRIVATE_KEY` to this service.
+`tsuz-api-jcc` uses only `JWT_PUBLIC_KEY` for user-token verification. Never add `JWT_PRIVATE_KEY` to this service. Main App ID and JCC App ID are non-secret identifiers; one-time App secrets and keys remain in the environment secret store.
 
 ### Docker Infra
 
-Start PostgreSQL and Redis separately from app releases:
+Run Actions → Init manually before the first JCC deployment, selecting `test` or `product` and entering the exact confirmation `INITIALIZE-test` or `INITIALIZE-product`. Init verifies that `tsuz-api-main` already created `DOCKER_NETWORK_NAME`, then starts only JCC PostgreSQL and Redis and waits for `pg_isready` and `redis-cli ping`. It never creates/removes the shared network, starts API/nginx, runs migrations, seeds, reports permissions, deletes volumes, or operates main-app resources.
+
+For direct server diagnostics, use:
 
 ```bash
-docker compose --env-file .env.infra -f docker-compose.infra.yml up -d
-docker compose --env-file .env.infra -f docker-compose.infra.yml ps
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.infra -f docker-compose.infra.yml config
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.infra -f docker-compose.infra.yml up -d postgres redis
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env.infra -f docker-compose.infra.yml ps postgres redis
 ```
 
-Do not run `docker compose --env-file .env.infra -f docker-compose.infra.yml down -v` in product unless you intentionally want to delete database and Redis volumes.
+Do not run `docker compose ... down -v` in product unless deleting JCC database and Redis volumes is intentional.
 
 ### Tag Release
 
@@ -272,7 +282,7 @@ git tag product-v1.0.1
 git push origin product-v1.0.1
 ```
 
-The workflow builds and pushes `test-v*.*.*` or `product-v*.*.*` Docker images. It refuses `latest` and refuses cross-environment deploys.
+For a normal immutable tag release, the workflow connects to the deployment server, checks out the exact tag, builds the JCC image locally on that server, and pushes it to the configured registry. Before starting API/nginx it runs, using the same Compose project, `alembic upgrade head`, the idempotent `python -m app.seed`, and `python -m scripts.report_permissions`; any failure blocks the release. It refuses `latest` and cross-environment deploys. `sync-jcc-data` is intentionally not part of this release path.
 
 ### Rollback
 
@@ -283,11 +293,11 @@ environment = product
 image_tag = product-v1.0.0
 ```
 
-Rollback skips rebuild, pulls the historical image, uploads `docker-compose.deploy.yml` and `nginx/default.conf`, then runs:
+Rollback skips rebuild and all migration/seed/permission-report bootstrap commands. It pulls the historical image, uploads `docker-compose.deploy.yml` and `nginx/default.conf`, then runs:
 
 ```bash
-docker compose --env-file .env -f docker-compose.deploy.yml pull api
-docker compose --env-file .env -f docker-compose.deploy.yml up -d --no-build api nginx
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml pull api
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml up -d --no-build api nginx
 ```
 
 PostgreSQL and Redis are not rebuilt or rolled back by application deploys.
@@ -359,11 +369,11 @@ After rollback, review the generated health and smoke results, then inspect api/
 
 ### Migration Policy
 
-Application image rollback does not automatically rollback database schema. Product migration should be reviewed and approved separately. Prefer expand-contract migrations so older images can still run during rollback windows.
+Application image rollback does not automatically roll back database schema. Product migration should be reviewed separately, with backup confirmation; prefer expand-contract migrations so older images can still run during rollback windows.
 
 - local: run `pdm run migrate` manually.
-- test: use Actions -> Migrate -> Run workflow, or run Alembic manually against test after review.
-- product: use Actions -> Migrate -> Run workflow with product approval, backup confirmation, and a reviewed migration diff.
+- test: normal immutable Deploy runs migration automatically; use Actions → Migrate for a reviewed explicit revision or recovery operation.
+- product: normal immutable Deploy runs migration automatically after the release tag is accepted; use Actions → Migrate for a reviewed explicit revision with backup confirmation.
 
 The generated Migrate workflow inputs are:
 
@@ -376,16 +386,16 @@ backup_confirmed = true
 It runs:
 
 ```bash
-docker compose --env-file .env -f docker-compose.deploy.yml run --rm api alembic current
-docker compose --env-file .env -f docker-compose.deploy.yml run --rm api alembic upgrade "$REVISION"
-docker compose --env-file .env -f docker-compose.deploy.yml run --rm api alembic current
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml run --rm --no-deps api alembic current
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml run --rm --no-deps api alembic upgrade "$REVISION"
+docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml run --rm --no-deps api alembic current
 ```
 
-Deploy and rollback do not run migrations automatically.
+Migrate remains an independent maintenance/recovery workflow. Every normal immutable Deploy runs `alembic upgrade head` automatically before starting API/nginx; historical-image rollback does not invoke Alembic.
 
-### Seed Policy
+### Seed and Permission Report Policy
 
-Product does not auto-run seed. The Migrate workflow also does not run seed. Use `pdm run seed` for local development, and execute product seed only as an explicit reviewed operation after confirming it is idempotent and safe for real data.
+Every normal immutable Deploy runs the idempotent `python -m app.seed` and `python -m scripts.report_permissions` after migration and before API/nginx startup. The permission report sends the complete JCC catalog to `tsuz-api-main` and is safe to repeat. Historical-image rollback runs neither seed nor permission report. `sync-jcc-data` remains a separately scheduled/data-operation command and is not part of Deploy.
 
 
 ## Official JCC Data Snapshots

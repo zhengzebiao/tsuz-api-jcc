@@ -14,6 +14,11 @@ DEFAULT_PERMISSIONS = (
         "description": "Read published JCC structured data",
     },
     {
+        "code": "jcc:record:read",
+        "display_name": "JCC record read",
+        "description": "Read active JCC records",
+    },
+    {
         "code": "jcc:stats:read",
         "display_name": "JCC statistics read",
         "description": "Read JCC resource statistics",
