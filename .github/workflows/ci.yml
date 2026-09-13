@@ -55,7 +55,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pipx install pdm
-      - run: pdm install
+      - run: pdm install --no-self
       - name: Lint changed Python files
         env:
           EVENT_NAME: ${{ github.event_name }}
