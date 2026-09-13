@@ -108,10 +108,14 @@ This template uses PDM with standard `pyproject.toml` metadata.
 
 The main service issues Service Tokens for both directions. Create the main and JCC service identities through main's existing `POST /admin/apps` endpoint, save each one-time Secret in the deployment secret store, and inject only the role-specific values at runtime. Do not commit real App IDs, Secrets, Tokens, private keys, or hashes.
 
-Configure the two independent grants in main's protected administration APIs:
+Configure the independent grants in main's protected administration APIs:
 
 - main app → JCC app → `jcc:record:read`, consumed by `GET /internal/v1/records`;
-- JCC app → main app → `main:application:read`, consumed by `GET /internal/v1/applications/{app_id}`.
+- main app → JCC app → `jcc:stats:read`, consumed by `GET /internal/v1/resource-statistics`;
+- JCC app → main app → `main:application:read`, consumed by `GET /internal/v1/applications/{app_id}`;
+- JCC app → main app → `main:permission:report`, consumed by `PUT /internal/v1/permissions/report`.
+
+Before starting the JCC API, run `pdm run report-permissions` (or provide a JSON array with `--permissions`) after the main migration and grant are ready. The command sends the complete JCC permission catalog; repeating it is safe and missing permissions remain historical records in main.
 
 JCC never signs Service Tokens and never receives the main private key. `app/deps/service_auth.py` validates the inbound token with the configured public key, strict issuer/audience/token type/time/claim checks, and the endpoint scope. User JWT authentication and its main Redis blacklist/session dependencies remain separate. The JCC Main Client uses HTTP Basic only at the token endpoint, applies an explicit timeout, caches the short-lived token in memory, and raises fixed non-sensitive errors.
 
@@ -433,7 +437,9 @@ Available read-only routes:
 
 List requests default to `limit=50&offset=0`; `limit` must be from 1 through 100 and `offset` cannot be negative. Each success response includes the exact snapshot metadata used for all entities, counts, and relationships in that response. Lists use stable official-ID ordering. Equipment without a recipe returns an empty `components` array, and only heroes have a detail route.
 
-Missing, invalid, blacklisted, expired, or session-revoked user tokens return 401. A valid user token without `jcc:data:read` returns 403. A missing current snapshot or unavailable database returns `503 {"detail":"JCC_DATA_UNAVAILABLE"}`; an unknown hero in the current snapshot returns `404 {"detail":"JCC_HERO_NOT_FOUND"}`. The API does not accept Service Tokens, expose source manifests or raw paths, proxy official URLs, or provide write/version-switch endpoints.
+Missing, invalid, blacklisted, expired, or session-revoked user tokens return 401. A valid user token without `jcc:data:read` returns 403. A missing current snapshot or unavailable database returns `503 {"detail":"JCC_DATA_UNAVAILABLE"}`; an unknown hero in the current snapshot returns `404 {"detail":"JCC_HERO_NOT_FOUND"}`. The user-facing `/jcc/*` API does not accept Service Tokens, expose source manifests or raw paths, proxy official URLs, or provide write/version-switch endpoints.
+
+The main-facing internal statistics route is `GET /internal/v1/resource-statistics` and requires a Service Token with `jcc:stats:read`. It returns fixed resource names and counts from one current snapshot, plus snapshot metadata; it returns `503 JCC_DATA_UNAVAILABLE` when no current snapshot exists. JCC does not expose raw files through this route.
 
 ## Scripts
 

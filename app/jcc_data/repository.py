@@ -71,6 +71,12 @@ class SnapshotItemResult(Generic[ItemT]):
     item: ItemT | None
 
 
+@dataclass(frozen=True)
+class ResourceCount:
+    resource: str
+    count: int
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -330,6 +336,34 @@ def import_snapshot(db: Session, incoming: StructuredSnapshot) -> ImportResult:
 
 def get_current_snapshot(db: Session, mode: str) -> JccSnapshot | None:
     return _current_snapshot(db, mode)
+
+
+def get_current_resource_counts(db: Session, mode: str) -> tuple[JccSnapshot, tuple[ResourceCount, ...]]:
+    snapshot = _required_current_snapshot(db, mode)
+    models = (
+        ("heroes", JccHero),
+        ("traits", JccTrait),
+        ("trait_tiers", JccTraitTier),
+        ("hero_traits", JccHeroTrait),
+        ("equipment", JccEquipment),
+        ("equipment_recipes", JccEquipmentRecipe),
+        ("augments", JccAugment),
+        ("adventures", JccAdventure),
+        ("galaxies", JccGalaxy),
+    )
+    counts: list[ResourceCount] = []
+    for name, model in models:
+        if model is JccTraitTier:
+            statement = (
+                select(func.count())
+                .select_from(JccTraitTier)
+                .join(JccTrait, JccTrait.id == JccTraitTier.trait_id)
+                .where(JccTrait.snapshot_id == snapshot.id)
+            )
+        else:
+            statement = select(func.count()).select_from(model).where(model.snapshot_id == snapshot.id)
+        counts.append(ResourceCount(resource=name, count=int(db.scalar(statement) or 0)))
+    return snapshot, tuple(counts)
 
 
 def _required_current_snapshot(db: Session, mode: str) -> JccSnapshot:
