@@ -1,6 +1,6 @@
 # JCC 官方资料同步、结构化入库与只读 API 实施方案
 
-> 状态：实施中（第一阶段已完成，第二阶段未开始）
+> 状态：已完成（第一阶段、第二阶段均已完成本地代码与自动化验收；生产权限、网关和部署待上线前验证）
 >
 > 本方案基于当前 `tsuz-api-jcc` 的 FastAPI、SQLAlchemy、Alembic、PostgreSQL、用户 Token 鉴权和官方 JSON 原始快照制定，并结合 [RAG 数据设计](jcc-ai-agent-rag-data-design.md) 与当前同步实现制定。
 >
@@ -974,11 +974,13 @@ git diff --check
 
 ### 第二阶段：用户 Token 保护的 `/jcc/*` 只读 API
 
-> 状态：未开始
+> 状态：已完成
 >
-> 阶段计划：待创建
+> 阶段计划：[JCC_LOL_STRUCTURED_DATA_API_IMPLEMENTATION_PHASE_2_PLAN.md](JCC_LOL_STRUCTURED_DATA_API_IMPLEMENTATION_PHASE_2_PLAN.md)
 >
-> 执行记录：待创建
+> 执行记录：[JCC_LOL_STRUCTURED_DATA_API_IMPLEMENTATION_PHASE_2_EXECUTION.md](JCC_LOL_STRUCTURED_DATA_API_IMPLEMENTATION_PHASE_2_EXECUTION.md)
+>
+> 验收结论：八个用户 Token 保护的 `/jcc/*` GET 接口、固定 snapshot 查询、分页/筛选、完整关系 item、字段白名单、固定错误和安全日志已经实现；第二阶段定向 26 tests、相关回归 51 tests、全量 100 tests、定向 Ruff、编译、Alembic head、锁文件、diff 和真实仓库 raw 的一次性 SQLite API smoke 通过。main 角色权限发布、真实跨服务用户 Token、网关/合规和生产部署未执行，继续作为上线前检查项。
 
 前置依赖：
 

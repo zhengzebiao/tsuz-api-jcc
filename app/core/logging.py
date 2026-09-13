@@ -84,12 +84,21 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             response.headers[settings.request_id_header] = request_id
+            route = request.scope.get("route")
+            route_path = getattr(route, "path", request.url.path)
+            context = getattr(request.state, "jcc_context", {})
             logging.getLogger("app.request").info(
-                "request completed method=%s path=%s status_code=%s duration_ms=%.2f",
+                "request completed method=%s path=%s route=%s status_code=%s duration_ms=%.2f "
+                "snapshot_version=%s snapshot_revision=%s limit=%s offset=%s",
                 request.method,
                 request.url.path,
+                route_path,
                 response.status_code,
                 (time.perf_counter() - started_at) * 1000,
+                context.get("snapshot_version", ""),
+                context.get("snapshot_revision", ""),
+                context.get("limit", ""),
+                context.get("offset", ""),
             )
             return response
         finally:

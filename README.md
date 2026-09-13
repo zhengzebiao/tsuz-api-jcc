@@ -408,7 +408,32 @@ If raw publication succeeds but parsing or database import fails, the raw revisi
 
 The scheduler itself is intentionally not committed to the repository. Configure cron, `launchd`, or another service manager to invoke the one-shot `pdm run sync-jcc-data`, capture stdout/stderr, and alert on a non-zero exit. A lock conflict exits with status 0 as a skipped run. The command logs version, revision, hash prefix, directory and result without logging raw payloads or database credentials.
 
-`JCC_DATA_RAW_DIR`, `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide non-secret defaults; explicit CLI options override path, timeout and retry values. This phase does not expose raw or structured data over `/jcc/*`; the user-token read API is a separate phase.
+`JCC_DATA_RAW_DIR`, `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide non-secret defaults; explicit CLI options override path, timeout and retry values.
+
+## JCC Structured Data API
+
+The structured data API reads only the database snapshot selected by `jcc_current_snapshots`; the API process does not read or expose files under `raw/`. Every endpoint requires a user Access Token with `jcc:data:read`:
+
+```http
+Authorization: Bearer <user-access-token>
+```
+
+Available read-only routes:
+
+| Route | Filters | Result |
+| --- | --- | --- |
+| `GET /jcc/snapshot` | none | Current version, revision, content hash, source update time, and source count |
+| `GET /jcc/heroes` | `name`, `trait_id`, `class_id`, `price`, `limit`, `offset` | Complete hero items with `traits` and `classes` |
+| `GET /jcc/heroes/{hero_id}` | official hero ID | Complete hero detail |
+| `GET /jcc/traits` | `kind=race\|job`, `name`, `limit`, `offset` | Complete trait items and ordered tiers |
+| `GET /jcc/equipment` | `name`, `type`, `limit`, `offset` | Complete equipment items and ordered `components` |
+| `GET /jcc/augments` | `name`, `level`, `limit`, `offset` | Complete augment items |
+| `GET /jcc/adventures` | `title`, `price`, `limit`, `offset` | Complete adventure items |
+| `GET /jcc/galaxies` | `name`, `limit`, `offset` | Complete galaxy items |
+
+List requests default to `limit=50&offset=0`; `limit` must be from 1 through 100 and `offset` cannot be negative. Each success response includes the exact snapshot metadata used for all entities, counts, and relationships in that response. Lists use stable official-ID ordering. Equipment without a recipe returns an empty `components` array, and only heroes have a detail route.
+
+Missing, invalid, blacklisted, expired, or session-revoked user tokens return 401. A valid user token without `jcc:data:read` returns 403. A missing current snapshot or unavailable database returns `503 {"detail":"JCC_DATA_UNAVAILABLE"}`; an unknown hero in the current snapshot returns `404 {"detail":"JCC_HERO_NOT_FOUND"}`. The API does not accept Service Tokens, expose source manifests or raw paths, proxy official URLs, or provide write/version-switch endpoints.
 
 ## Scripts
 
