@@ -7,7 +7,9 @@ services:
     ports:
       - "${APP_PORT:-8001}:8000"
     networks:
-      - backend
+      backend:
+        aliases:
+          - jcc-api
     restart: unless-stopped
     healthcheck:
       test:
