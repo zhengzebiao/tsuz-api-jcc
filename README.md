@@ -116,7 +116,8 @@ Configure the independent grants in main's protected administration APIs:
 - main app → JCC app → `jcc:record:read`, consumed by `GET /internal/v1/records`;
 - main app → JCC app → `jcc:stats:read`, consumed by `GET /internal/v1/resource-statistics`;
 - JCC app → main app → `main:application:read`, consumed by `GET /internal/v1/applications/{app_id}`;
-- JCC app → main app → `main:permission:report`, consumed by `PUT /internal/v1/permissions/report`.
+- JCC app → main app → `main:permission:report`, consumed by `PUT /internal/v1/permissions/report`;
+- JCC app → main app → `main:audit:report`, consumed by `POST /internal/v1/audit/events` after a new structured JCC snapshot is committed.
 
 Before starting the JCC API, run `pdm run report-permissions` (or provide a JSON array with `--permissions`) after the main migration and grant are ready. The command sends the complete JCC permission catalog; repeating it is safe and missing permissions remain historical records in main.
 
@@ -420,7 +421,9 @@ Force refresh downloads the complete resource set, calculates a canonical SHA-25
 
 If raw publication succeeds but parsing or database import fails, the raw revision remains available and the old current database snapshot stays active. Running the same command again reuses that raw revision and retries the complete import. Do not delete raw directories to trigger updates, and do not schedule overlapping processes for the same raw directory; the command uses a file lock as a final safety boundary.
 
-The scheduler itself is intentionally not committed to the repository. Configure cron, `launchd`, or another service manager to invoke the one-shot `pdm run sync-jcc-data`, capture stdout/stderr, and alert on a non-zero exit. A lock conflict exits with status 0 as a skipped run. The command logs version, revision, hash prefix, directory and result without logging raw payloads or database credentials.
+After the structured import commits a genuinely new snapshot (`imported.status == "updated"`), the command requests a separate `main:audit:report` Service Token and reports `jcc.data.snapshot.updated` to main. Main records the JCC App Actor audit and handles the configured `jcc_sync_data_email` post event. `matched` and `skipped` imports do not report. Audit or email delivery failures return a non-zero command status without deleting the raw revision or rolling back the committed structured snapshot. This flow has no outbox or persistent retry: a later `skipped` import does not automatically resend the missing report, so operators must investigate every non-zero run.
+
+This phase does not include the repository-managed scheduler; the next phase adds the approved test/product GitHub Actions schedule and deploy-time scan. Until then, invoke the one-shot `pdm run sync-jcc-data` from an external scheduler, capture stdout/stderr, and alert on a non-zero exit. A lock conflict exits with status 0 as a skipped run. The command logs version, revision, hash prefix, directory and result without logging raw payloads, Service Tokens, App Secrets, or database credentials.
 
 `JCC_DATA_RAW_DIR`, `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide non-secret defaults; explicit CLI options override path, timeout and retry values.
 

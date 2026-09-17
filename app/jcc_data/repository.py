@@ -34,6 +34,8 @@ class ImportResult:
     version: str
     revision: int
     content_hash: str
+    source_updated_at: str | None
+    season: str
 
 
 @dataclass(frozen=True)
@@ -155,16 +157,37 @@ def import_snapshot(db: Session, incoming: StructuredSnapshot) -> ImportResult:
                     )
                 )
                 return ImportResult(
-                    "matched", existing.id, metadata.mode, metadata.version, existing.revision, existing.content_hash
+                    "matched",
+                    existing.id,
+                    metadata.mode,
+                    metadata.version,
+                    existing.revision,
+                    existing.content_hash,
+                    metadata.source_updated_at,
+                    metadata.season,
                 )
             if current_pointer.snapshot_id == existing.id:
                 return ImportResult(
-                    "skipped", existing.id, metadata.mode, metadata.version, existing.revision, existing.content_hash
+                    "skipped",
+                    existing.id,
+                    metadata.mode,
+                    metadata.version,
+                    existing.revision,
+                    existing.content_hash,
+                    metadata.source_updated_at,
+                    metadata.season,
                 )
             current_pointer.snapshot_id = existing.id
             current_pointer.updated_at = _now()
             return ImportResult(
-                "matched", existing.id, metadata.mode, metadata.version, existing.revision, existing.content_hash
+                "matched",
+                existing.id,
+                metadata.mode,
+                metadata.version,
+                existing.revision,
+                existing.content_hash,
+                metadata.source_updated_at,
+                metadata.season,
             )
 
         snapshot = JccSnapshot(
@@ -330,7 +353,14 @@ def import_snapshot(db: Session, incoming: StructuredSnapshot) -> ImportResult:
             current_pointer.snapshot_id = snapshot.id
             current_pointer.updated_at = _now()
         return ImportResult(
-            "updated", snapshot.id, metadata.mode, metadata.version, metadata.revision, metadata.content_hash
+            "updated",
+            snapshot.id,
+            metadata.mode,
+            metadata.version,
+            metadata.revision,
+            metadata.content_hash,
+            metadata.source_updated_at,
+            metadata.season,
         )
 
 

@@ -339,6 +339,8 @@ def test_import_is_idempotent_and_publishes_current(db: Session, tmp_path: Path)
     assert first.status == "updated"
     assert second.status == "skipped"
     assert first.snapshot_id == second.snapshot_id
+    assert first.season == second.season == SEASON
+    assert first.source_updated_at == second.source_updated_at == "2026-09-02 19:19:44"
     assert get_current_snapshot(db, MODE).id == first.snapshot_id
     assert db.scalar(select(func.count()).select_from(JccSnapshot)) == 1
     assert db.scalar(select(func.count()).select_from(JccHero)) == 2
@@ -378,12 +380,22 @@ def test_new_revision_switches_current_and_old_snapshot_remains(db: Session, tmp
     second_result = import_snapshot(db, second)
 
     assert second_result.status == "updated"
+    assert second_result.season == SEASON
+    assert second_result.source_updated_at == "2026-09-02 19:19:44"
     assert second_result.snapshot_id != first_result.snapshot_id
     assert get_current_snapshot(db, MODE).id == second_result.snapshot_id
     assert db.scalar(select(func.count()).select_from(JccSnapshot)) == 2
     db.commit()
     switch_current_snapshot(db, MODE, first_result.snapshot_id)
     assert get_current_snapshot(db, MODE).id == first_result.snapshot_id
+    db.commit()
+
+    matched_result = import_snapshot(db, second)
+
+    assert matched_result.status == "matched"
+    assert matched_result.snapshot_id == second_result.snapshot_id
+    assert matched_result.season == SEASON
+    assert matched_result.source_updated_at == "2026-09-02 19:19:44"
 
 
 def test_failed_import_rolls_back_and_keeps_current(db: Session, tmp_path: Path) -> None:

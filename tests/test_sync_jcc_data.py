@@ -1,17 +1,21 @@
 import json
+from datetime import datetime
 from pathlib import Path
-from typing import Self
+from typing import ClassVar, Self
 from urllib.error import URLError
 
 import pytest
 
 import scripts.sync_jcc_data as sync_module
+from app.clients.main_client import MainClientRequestError
 from app.jcc_data.canonical_hash import canonical_json_bytes, snapshot_content_hash
+from app.jcc_data.repository import ImportResult
 from scripts.sync_jcc_data import (
     CONFIG_URL,
     FIELDS,
     LockUnavailable,
     SyncError,
+    SyncResult,
     acquire_lock,
     fetch_bytes,
     main,
@@ -361,24 +365,181 @@ def test_acquire_lock_rejects_second_holder(tmp_path: Path) -> None:
         pass
 
 
-def test_cli_reuses_raw_and_runs_structured_import(
+def _import_result_for(status: str) -> ImportResult:
+    return ImportResult(
+        status=status,
+        snapshot_id=42,
+        mode=MODE,
+        version=VERSION,
+        revision=2,
+        content_hash="a" * 64,
+        source_updated_at="2026-09-02 19:19:44",
+        season=SEASON,
+    )
+
+
+def test_cli_reuses_raw_imports_and_reports_updated_snapshot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     raw_directory = tmp_path / "raw"
     synced = sync_latest(raw_directory, fetcher=_fetcher_for(_payloads(), []))
-    seen: list[Path] = []
+    imported = _import_result_for("updated")
+    seen_directories: list[Path] = []
 
-    class Imported:
-        status = "updated"
+    class FakeMainClient:
+        payloads: ClassVar[list[dict]] = []
+        closed = False
+
+        def report_audit_event(self, payload: dict) -> dict:
+            type(self).payloads.append(payload)
+            return {"audit_event_id": 99, "post_event_status": "sent"}
+
+        def close(self) -> None:
+            type(self).closed = True
 
     monkeypatch.setattr(sync_module, "sync_latest", lambda *args, **kwargs: synced)
-    monkeypatch.setattr(sync_module, "_import_result", lambda result: seen.append(result.directory) or Imported())
+    monkeypatch.setattr(
+        sync_module,
+        "_import_result",
+        lambda result: seen_directories.append(result.directory) or imported,
+    )
+    monkeypatch.setattr(sync_module, "MainClient", FakeMainClient)
 
     assert main(["--raw-dir", str(raw_directory)]) == 0
-    assert seen == [synced.directory]
+
+    assert seen_directories == [synced.directory]
+    assert FakeMainClient.closed is True
+    assert len(FakeMainClient.payloads) == 1
+    payload = FakeMainClient.payloads[0]
+    assert payload == {
+        "action": "jcc.data.snapshot.updated",
+        "target_type": "jcc_snapshot",
+        "target_id": 42,
+        "result": "success",
+        "reason": "JCC data snapshot updated",
+        "changes": {
+            "mode": MODE,
+            "mode_name": "自然之力",
+            "season": SEASON,
+            "version": VERSION,
+            "revision": 2,
+            "source_updated_at": "2026-09-02 19:19:44",
+            "synced_at": payload["changes"]["synced_at"],
+            "content_hash": "a" * 64,
+        },
+        "post_event": "jcc_sync_data_email",
+    }
+    synced_at = datetime.fromisoformat(payload["changes"]["synced_at"])
+    assert synced_at.utcoffset() is not None
+    assert synced_at.utcoffset().total_seconds() == 0
     assert "sync updated" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("status", ["matched", "skipped"])
+def test_cli_does_not_report_unchanged_structured_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    synced = SyncResult(
+        "updated",
+        VERSION,
+        SEASON,
+        tmp_path / "raw" / f"{VERSION}-{SEASON}",
+        MODE,
+        1,
+        "b" * 64,
+    )
+    imported = _import_result_for(status)
+
+    class UnexpectedMainClient:
+        def __init__(self) -> None:
+            raise AssertionError("MainClient must not be created for unchanged data")
+
+    monkeypatch.setattr(sync_module, "sync_latest", lambda *args, **kwargs: synced)
+    monkeypatch.setattr(sync_module, "_import_result", lambda _result: imported)
+    monkeypatch.setattr(sync_module, "MainClient", UnexpectedMainClient)
+
+    assert main(["--raw-dir", str(tmp_path / "raw")]) == 0
+
+
+def test_cli_audit_report_failure_returns_nonzero_and_preserves_raw(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    raw_directory = tmp_path / "raw"
+    synced = sync_latest(raw_directory, fetcher=_fetcher_for(_payloads(), []))
+    imported = _import_result_for("updated")
+
+    class FailingMainClient:
+        closed = False
+
+        def report_audit_event(self, _payload: dict) -> dict:
+            raise MainClientRequestError(MainClientRequestError.code)
+
+        def close(self) -> None:
+            type(self).closed = True
+
+    monkeypatch.setattr(sync_module, "sync_latest", lambda *args, **kwargs: synced)
+    monkeypatch.setattr(sync_module, "_import_result", lambda _result: imported)
+    monkeypatch.setattr(sync_module, "MainClient", FailingMainClient)
+
+    assert main(["--raw-dir", str(raw_directory)]) == 1
+    assert synced.directory.exists()
+    assert FailingMainClient.closed is True
+    error = capsys.readouterr().err
+    assert error == "sync failed: MainClientRequestError\n"
+    assert "service-token" not in error
+
+
+@pytest.mark.parametrize(
+    ("season", "source_updated_at", "message"),
+    [
+        ("", "2026-09-02 19:19:44", "no season"),
+        (SEASON, None, "no source update time"),
+    ],
+)
+def test_cli_rejects_incomplete_audit_metadata_without_calling_main(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    season: str,
+    source_updated_at: str | None,
+    message: str,
+) -> None:
+    synced = SyncResult(
+        "updated",
+        VERSION,
+        SEASON,
+        tmp_path / "raw" / f"{VERSION}-{SEASON}",
+        MODE,
+        1,
+        "b" * 64,
+    )
+    imported = ImportResult(
+        status="updated",
+        snapshot_id=42,
+        mode=MODE,
+        version=VERSION,
+        revision=1,
+        content_hash="b" * 64,
+        source_updated_at=source_updated_at,
+        season=season,
+    )
+
+    class UnexpectedMainClient:
+        def __init__(self) -> None:
+            raise AssertionError("MainClient must not be created for incomplete metadata")
+
+    monkeypatch.setattr(sync_module, "sync_latest", lambda *args, **kwargs: synced)
+    monkeypatch.setattr(sync_module, "_import_result", lambda _result: imported)
+    monkeypatch.setattr(sync_module, "MainClient", UnexpectedMainClient)
+
+    assert main(["--raw-dir", str(tmp_path / "raw")]) == 1
+    assert message in capsys.readouterr().err
 
 
 def test_cli_reports_database_failure_without_removing_raw(
@@ -393,7 +554,12 @@ def test_cli_reports_database_failure_without_removing_raw(
     def fail_import(_result):
         raise RuntimeError("database unavailable")
 
+    class UnexpectedMainClient:
+        def __init__(self) -> None:
+            raise AssertionError("MainClient must not be created when import fails")
+
     monkeypatch.setattr(sync_module, "_import_result", fail_import)
+    monkeypatch.setattr(sync_module, "MainClient", UnexpectedMainClient)
 
     assert main(["--raw-dir", str(raw_directory)]) == 1
     assert synced.directory.exists()

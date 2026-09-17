@@ -14,13 +14,16 @@ import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.clients.main_client import MainClient
 from app.core.config import settings
 from app.jcc_data.canonical_hash import snapshot_content_hash
+from app.jcc_data.repository import ImportResult
 from app.jcc_data.snapshot_reader import (
     FIELDS,
     REQUIRED_NAMES,
@@ -384,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _import_result(result: SyncResult) -> Any:
+def _import_result(result: SyncResult) -> ImportResult:
     from app.core.database import SessionLocal
 
     db = SessionLocal()
@@ -402,6 +405,31 @@ def _import_result(result: SyncResult) -> Any:
         db.close()
 
 
+def _audit_payload(imported: ImportResult) -> dict[str, Any]:
+    if not imported.season:
+        raise SyncError("structured snapshot has no season")
+    if not imported.source_updated_at:
+        raise SyncError("structured snapshot has no source update time")
+    return {
+        "action": "jcc.data.snapshot.updated",
+        "target_type": "jcc_snapshot",
+        "target_id": imported.snapshot_id,
+        "result": "success",
+        "reason": "JCC data snapshot updated",
+        "changes": {
+            "mode": imported.mode,
+            "mode_name": settings.jcc_data_mode_name,
+            "season": imported.season,
+            "version": imported.version,
+            "revision": imported.revision,
+            "source_updated_at": imported.source_updated_at,
+            "synced_at": datetime.now(UTC).isoformat(),
+            "content_hash": imported.content_hash,
+        },
+        "post_event": "jcc_sync_data_email",
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -415,6 +443,13 @@ def main(argv: list[str] | None = None) -> int:
             expected_mode_name=settings.jcc_data_mode_name,
         )
         imported = _import_result(result)
+        if imported.status == "updated":
+            audit_payload = _audit_payload(imported)
+            main_client = MainClient()
+            try:
+                main_client.report_audit_event(audit_payload)
+            finally:
+                main_client.close()
     except LockUnavailable as exc:
         print(f"sync skipped: {exc}", file=sys.stderr)
         return 0

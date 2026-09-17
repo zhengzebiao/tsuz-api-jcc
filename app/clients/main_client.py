@@ -36,6 +36,7 @@ class CachedServiceToken:
 class MainClient:
     REQUIRED_SCOPE = "main:application:read"
     PERMISSION_REPORT_SCOPE = "main:permission:report"
+    AUDIT_REPORT_SCOPE = "main:audit:report"
     REFRESH_MARGIN_SECONDS = 30
 
     def __init__(self, client: httpx.Client | None = None) -> None:
@@ -70,6 +71,34 @@ class MainClient:
         if not isinstance(payload, dict):
             raise MainClientRequestError(MainClientRequestError.code)
         return payload
+
+    def report_audit_event(
+        self,
+        payload: dict[str, Any],
+        *,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        headers = {
+            "Authorization": f"Bearer {self._service_token(self.AUDIT_REPORT_SCOPE)}",
+            "Content-Type": "application/json",
+        }
+        if request_id:
+            headers["X-Request-ID"] = request_id
+        try:
+            response = self._client.post(
+                f"{settings.main_api_base_url.rstrip('/')}/internal/v1/audit/events",
+                headers=headers,
+                json=payload,
+            )
+            response.raise_for_status()
+            response_payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("audit report request failed reason=upstream_error")
+            raise MainClientRequestError(MainClientRequestError.code) from exc
+        if not isinstance(response_payload, dict):
+            logger.warning("audit report request failed reason=upstream_error")
+            raise MainClientRequestError(MainClientRequestError.code)
+        return response_payload
 
     def get_application(
         self,
