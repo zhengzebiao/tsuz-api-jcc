@@ -4,6 +4,8 @@ services:
     container_name: ${CONTAINER_NAME:-jcc-api}
     env_file:
       - .env
+    volumes:
+      - raw_data:/app/raw
     ports:
       - "${APP_PORT:-8001}:8000"
     networks:
@@ -35,6 +37,10 @@ services:
     networks:
       - backend
     restart: unless-stopped
+
+volumes:
+  raw_data:
+    name: ${JCC_DATA_VOLUME_NAME:-jcc_raw_data}
 
 networks:
   backend:

@@ -1,0 +1,110 @@
+name: Sync JCC Data
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment whose running JCC API container will scan official data
+        required: true
+        type: choice
+        options:
+          - test
+          - product
+
+permissions:
+  contents: read
+
+jobs:
+  sync-jcc-data:
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.environment) || '["test","product"]') }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: jcc-runtime-${{ github.repository }}-${{ matrix.environment }}
+      cancel-in-progress: false
+    env:
+      DEPLOY_ENV: ${{ matrix.environment }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      COMPOSE_PROJECT_NAME: ${{ vars.COMPOSE_PROJECT_NAME }}
+    steps:
+      - name: Validate sync target
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$DEPLOY_ENV" in
+            test|product)
+              ;;
+            *)
+              echo "Unsupported sync environment: $DEPLOY_ENV" >&2
+              exit 1
+              ;;
+          esac
+          : "${DEPLOY_HOST:?Missing DEPLOY_HOST environment variable}"
+          : "${DEPLOY_USER:?Missing DEPLOY_USER environment variable}"
+          : "${DEPLOY_PATH:?Missing DEPLOY_PATH environment variable}"
+          : "${COMPOSE_PROJECT_NAME:?Missing COMPOSE_PROJECT_NAME environment variable}"
+          : "${SSH_PRIVATE_KEY:?Missing SSH_PRIVATE_KEY secret}"
+          if [[ ! "$COMPOSE_PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+            echo "Invalid COMPOSE_PROJECT_NAME: $COMPOSE_PROJECT_NAME" >&2
+            exit 1
+          fi
+          if ! [[ "${DEPLOY_PORT:-22}" =~ ^[0-9]+$ ]] || [ "${DEPLOY_PORT:-22}" -lt 1 ] || [ "${DEPLOY_PORT:-22}" -gt 65535 ]; then
+            echo "DEPLOY_PORT must be between 1 and 65535." >&2
+            exit 1
+          fi
+          if [[ ! "$DEPLOY_PATH" =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+            echo "DEPLOY_PATH may only contain path-safe characters." >&2
+            exit 1
+          fi
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+          fi
+      - name: Scan official JCC data in running API container
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            printf 'COMPOSE_PROJECT_NAME=%q\n' "$COMPOSE_PROJECT_NAME"
+            cat <<'REMOTE_SYNC'
+          set -euo pipefail
+          command -v docker >/dev/null 2>&1 || { echo "docker is required on the deployment server." >&2; exit 1; }
+          docker compose version >/dev/null
+          [ -f .env ] || { echo "JCC runtime environment file is missing." >&2; exit 1; }
+          [ -f docker-compose.deploy.yml ] || { echo "JCC deployment Compose file is missing." >&2; exit 1; }
+          compose=(docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml)
+          "${compose[@]}" config --quiet
+          container_id="$("${compose[@]}" ps -q api)"
+          if [ -z "$container_id" ]; then
+            echo "Unable to resolve the running JCC api container." >&2
+            exit 1
+          fi
+          status="$(docker inspect --format '{{.State.Status}}' "$container_id")"
+          health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}unavailable{{end}}' "$container_id")"
+          if [ "$status" != "running" ] || [ "$health" != "healthy" ]; then
+            echo "JCC api container is not ready: status=$status health=$health" >&2
+            exit 1
+          fi
+          "${compose[@]}" exec -T api pdm run sync-jcc-data --force-refresh
+          REMOTE_SYNC
+          } | ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && bash -s"

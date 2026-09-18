@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.repository }}
+  group: jcc-runtime-${{ github.repository }}-${{ github.event_name == 'workflow_dispatch' && inputs.environment || startsWith(github.ref_name, 'product-v') && 'product' || 'test' }}
   cancel-in-progress: false
 
 jobs:
@@ -338,6 +338,7 @@ jobs:
       MAIN_API_BASE_URL: ${{ vars.MAIN_API_BASE_URL }}
       INTERNAL_HTTP_TIMEOUT_SECONDS: ${{ vars.INTERNAL_HTTP_TIMEOUT_SECONDS }}
       JCC_DATA_RAW_DIR: ${{ vars.JCC_DATA_RAW_DIR }}
+      JCC_DATA_VOLUME_NAME: ${{ vars.JCC_DATA_VOLUME_NAME }}
       JCC_DATA_MODE: ${{ vars.JCC_DATA_MODE }}
       JCC_DATA_MODE_NAME: ${{ vars.JCC_DATA_MODE_NAME }}
       JCC_DATA_SYNC_TIMEOUT_SECONDS: ${{ vars.JCC_DATA_SYNC_TIMEOUT_SECONDS }}
@@ -484,6 +485,7 @@ jobs:
               "MAIN_API_BASE_URL": os.environ.get("MAIN_API_BASE_URL") or f"http://tsuz-api-main-{os.environ['DEPLOY_ENV']}:8000",
               "INTERNAL_HTTP_TIMEOUT_SECONDS": os.environ.get("INTERNAL_HTTP_TIMEOUT_SECONDS") or "10",
               "JCC_DATA_RAW_DIR": os.environ.get("JCC_DATA_RAW_DIR") or "raw",
+              "JCC_DATA_VOLUME_NAME": os.environ.get("JCC_DATA_VOLUME_NAME") or f"tsuz-api-jcc-{os.environ['DEPLOY_ENV']}-raw",
               "JCC_DATA_MODE": os.environ.get("JCC_DATA_MODE") or "18",
               "JCC_DATA_MODE_NAME": os.environ.get("JCC_DATA_MODE_NAME") or "自然之力",
               "JCC_DATA_SYNC_TIMEOUT_SECONDS": os.environ.get("JCC_DATA_SYNC_TIMEOUT_SECONDS") or "30",
@@ -602,6 +604,13 @@ jobs:
           REMOTE_HEALTH
           } | ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
             "cd '$DEPLOY_PATH' && bash -s"
+      - name: Scan JCC data after normal release
+        if: ${{ env.SHOULD_BUILD == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && docker compose -p '$COMPOSE_PROJECT_NAME' --env-file .env -f docker-compose.deploy.yml exec -T api pdm run sync-jcc-data --force-refresh"
       - name: Run deployment smoke test
         shell: bash
         run: |

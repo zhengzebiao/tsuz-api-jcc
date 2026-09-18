@@ -217,7 +217,8 @@ This template includes a dedicated GitHub Actions Deploy workflow plus separate 
 | `docker-compose.infra.yml` | Docker PostgreSQL and Redis for long-lived test/product infrastructure | start once and preserve volumes |
 | `docker-compose.deploy.yml` | Application release and rollback for api + nginx on the main-owned shared network | updated for each image tag |
 | `.github/workflows/init.yml` | Independent manual JCC infrastructure initializer | checks the existing network and starts only JCC PostgreSQL/Redis |
-| `.github/workflows/deploy.yml` | Tag release, normal-release bootstrap, and workflow_dispatch rollback | runs on immutable image tags |
+| `.github/workflows/deploy.yml` | Tag release, normal-release bootstrap/data scan, and workflow_dispatch rollback | runs on immutable image tags |
+| `.github/workflows/sync-jcc-data.yml` | test/product official-data scan in each running API container | every 6 hours or manual environment selection |
 | `.github/workflows/migrate.yml` | Manual Alembic maintenance workflow | runs only by reviewed workflow_dispatch |
 | `.env.deploy.example` | Example remote runtime environment | copy to real secrets/variables |
 
@@ -235,9 +236,10 @@ Recommended Variables:
 | `DEPLOY_REPO_PATH` / `DOCKER_BUILD_PLATFORM` | Dedicated server checkout path and build platform |
 | `CONTAINER_NAME` / `NGINX_CONTAINER_NAME` / `APP_PORT` / `NGINX_PORT` | JCC runtime container and port settings |
 | `APP_ENV` / `COMPOSE_PROJECT_NAME` / `DOCKER_NETWORK_NAME` | Environment, explicit Compose project, and main-owned shared network |
-| `SERVICE_NAME`, logging, runtime and JCC data variables | JCC runtime defaults and snapshot sync settings |
+| `SERVICE_NAME` and logging/runtime variables | JCC runtime defaults and snapshot sync settings |
 | `JWT_ISSUER` / `JWT_AUDIENCE` / `SERVICE_TOKEN_*` | Token validation contract |
 | `JCC_APP_ID` / `MAIN_APP_ID` / `MAIN_*_URL` | App-to-app identity and main service endpoints |
+| `JCC_DATA_VOLUME_NAME` | Environment-specific persistent raw volume name; test/product must differ |
 | `CORS_ALLOW_ORIGINS` / health variables | Browser policy and deploy health checks |
 | `POSTGRES_CONTAINER_NAME` / `POSTGRES_DB` / `POSTGRES_USER` / ports | JCC Init infrastructure settings |
 | `INIT_HEALTH_RETRIES` / `INIT_HEALTH_INTERVAL_SECONDS` | JCC Init readiness window |
@@ -283,7 +285,7 @@ git tag product-v1.0.1
 git push origin product-v1.0.1
 ```
 
-For a normal immutable tag release, the workflow connects to the deployment server, checks out the exact tag, builds the JCC image locally on that server, and pushes it to the configured registry. Before starting API/nginx it runs, using the same Compose project, `alembic upgrade head`, the idempotent `python -m app.seed`, and `python -m scripts.report_permissions`; any failure blocks the release. It refuses `latest` and cross-environment deploys. `sync-jcc-data` is intentionally not part of this release path.
+For a normal immutable tag release, the workflow connects to the deployment server, checks out the exact tag, builds the JCC image locally on that server, and pushes it to the configured registry. Before starting API/nginx it runs, using the same Compose project, `alembic upgrade head`, the idempotent `python -m app.seed`, and `python -m scripts.report_permissions`; any failure blocks the release. After the API container becomes healthy, the normal release executes `pdm run sync-jcc-data --force-refresh` once inside that running container. It refuses `latest` and cross-environment deploys.
 
 ### Rollback
 
@@ -294,7 +296,7 @@ environment = product
 image_tag = product-v1.0.0
 ```
 
-Rollback skips rebuild and all migration/seed/permission-report bootstrap commands. It pulls the historical image, uploads `docker-compose.deploy.yml` and `nginx/default.conf`, then runs:
+Rollback skips rebuild, all migration/seed/permission-report bootstrap commands, and the post-release data scan. It pulls the historical image, uploads `docker-compose.deploy.yml` and `nginx/default.conf`, then runs:
 
 ```bash
 docker compose -p "$COMPOSE_PROJECT_NAME" --env-file .env -f docker-compose.deploy.yml pull api
@@ -396,7 +398,7 @@ Migrate remains an independent maintenance/recovery workflow. Every normal immut
 
 ### Seed and Permission Report Policy
 
-Every normal immutable Deploy runs the idempotent `python -m app.seed` and `python -m scripts.report_permissions` after migration and before API/nginx startup. The permission report sends the complete JCC catalog to `tsuz-api-main` and is safe to repeat. Historical-image rollback runs neither seed nor permission report. `sync-jcc-data` remains a separately scheduled/data-operation command and is not part of Deploy.
+Every normal immutable Deploy runs the idempotent `python -m app.seed` and `python -m scripts.report_permissions` after migration and before API/nginx startup. The permission report sends the complete JCC catalog to `tsuz-api-main` and is safe to repeat. After the new API container becomes healthy, a normal release scans official JCC data once with `--force-refresh`; historical-image rollback runs neither bootstrap commands nor that scan.
 
 
 ## Official JCC Data Snapshots
@@ -423,9 +425,9 @@ If raw publication succeeds but parsing or database import fails, the raw revisi
 
 After the structured import commits a genuinely new snapshot (`imported.status == "updated"`), the command requests a separate `main:audit:report` Service Token and reports `jcc.data.snapshot.updated` to main. Main records the JCC App Actor audit and handles the configured `jcc_sync_data_email` post event. `matched` and `skipped` imports do not report. Audit or email delivery failures return a non-zero command status without deleting the raw revision or rolling back the committed structured snapshot. This flow has no outbox or persistent retry: a later `skipped` import does not automatically resend the missing report, so operators must investigate every non-zero run.
 
-This phase does not include the repository-managed scheduler; the next phase adds the approved test/product GitHub Actions schedule and deploy-time scan. Until then, invoke the one-shot `pdm run sync-jcc-data` from an external scheduler, capture stdout/stderr, and alert on a non-zero exit. A lock conflict exits with status 0 as a skipped run. The command logs version, revision, hash prefix, directory and result without logging raw payloads, Service Tokens, App Secrets, or database credentials.
+The repository-managed `.github/workflows/sync-jcc-data.yml` runs every six hours for independent `test` and `product` GitHub Environments, and its manual trigger selects one environment. It connects through that Environment's SSH settings and executes `pdm run sync-jcc-data --force-refresh` only inside the already-running API container. A normal immutable release runs the same command once after container health succeeds; a historical-image rollback skips it. Neither scan path builds, pulls, pushes, creates, restarts, or replaces containers. A shared per-environment concurrency group serializes scheduled/manual scans with Deploy, while the command's file lock remains the final safety boundary. A lock conflict exits with status 0 as a skipped run; any other non-zero status fails the Action for investigation.
 
-`JCC_DATA_RAW_DIR`, `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide non-secret defaults; explicit CLI options override path, timeout and retry values.
+Deployment mounts a Compose-managed named volume at `/app/raw`, so raw revisions and `.sync.lock` survive API container replacement. Configure an environment-specific `JCC_DATA_VOLUME_NAME` such as `tsuz-api-jcc-test-raw` or `tsuz-api-jcc-product-raw`; using one shared value would mix raw history across environments, especially when both deployments share a Docker host. Keep deployed `JCC_DATA_RAW_DIR=raw`; pointing it elsewhere bypasses this volume. `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide the remaining non-secret defaults, while explicit CLI options override path, timeout and retry values. The command logs version, revision, hash prefix, directory and result without logging raw payloads, Service Tokens, App Secrets, or database credentials.
 
 ## JCC Structured Data API
 
