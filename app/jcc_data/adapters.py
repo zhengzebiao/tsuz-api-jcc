@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
@@ -177,6 +178,63 @@ def _skill_values(record: dict[str, Any], context: str) -> dict[str, str] | None
     return values or None
 
 
+def _split_aggregate_tier_descriptions(
+    value: str | None,
+    activation: list[int],
+    context: str,
+) -> list[str | None]:
+    if value is None:
+        return [None] * len(activation)
+    matches = list(re.finditer(r"\(([1-9][0-9]*)\)", value))
+    if len(matches) != len(activation) or [int(match.group(1)) for match in matches] != activation:
+        raise DataValidationError(f"{context}: aggregate descriptions do not match numList")
+    return [
+        value[match.start() : matches[index + 1].start()].strip()
+        if index + 1 < len(matches)
+        else value[match.start() :].strip()
+        for index, match in enumerate(matches)
+    ]
+
+
+def _aggregate_trait_tiers(
+    record: dict[str, Any],
+    external_id: str,
+    activation: list[int],
+) -> list[TraitTierData] | None:
+    context = f"trait {external_id}"
+    raw_num = record.get("num")
+    if not isinstance(raw_num, str) or not re.search(r"[|｜]", raw_num):
+        return None
+    if split_ints(raw_num, f"{context} num") != activation:
+        raise DataValidationError(f"{context}: aggregate num does not match numList")
+    for key in ("numList", "values"):
+        if key in record and split_ints(record[key], f"{context} {key}") != activation:
+            raise DataValidationError(f"{context}: aggregate {key} does not match numList")
+
+    max_level = integer(record.get("maxLevel"), f"{context} maxLevel", required=False)
+    if max_level is not None and max_level != len(activation):
+        raise DataValidationError(f"{context}: maxLevel does not match numList")
+    real_descriptions = _split_aggregate_tier_descriptions(
+        optional_string(record, "realDesc", context),
+        activation,
+        context,
+    )
+    description = optional_string(record, "desc", context)
+    source_attributes = _source(record, {"color", "desc2", "values", "prefix"})
+    return [
+        TraitTierData(
+            external_id=f"{external_id}:{level}",
+            tier_order=level,
+            activation_count=count,
+            level=level,
+            description=description,
+            real_description=real_descriptions[level - 1],
+            source_attributes=source_attributes,
+        )
+        for level, count in enumerate(activation, start=1)
+    ]
+
+
 def _build_traits(raw: RawSnapshot) -> tuple[list[TraitData], dict[tuple[str, str], TraitData]]:
     result: dict[tuple[str, str], TraitData] = {}
     race = _data(raw, "race")
@@ -213,21 +271,28 @@ def _build_traits(raw: RawSnapshot) -> tuple[list[TraitData], dict[tuple[str, st
         kind = {0: "race", 1: "job"}.get(type_value)
         if kind is None or (kind, check_id) not in result:
             raise DataValidationError(f"trait {external_id}: unknown base trait")
-        level = integer(record.get("level"), f"trait {external_id} level")
-        activation_count = integer(record.get("num"), f"trait {external_id} num")
-        tier = TraitTierData(
-            external_id=external_id,
-            tier_order=level,
-            activation_count=activation_count,
-            level=level,
-            description=optional_string(record, "desc", f"trait {external_id}"),
-            real_description=optional_string(record, "realDesc", f"trait {external_id}"),
-            source_attributes=_source(record, {"color", "desc2", "values", "prefix"}),
-        )
+        trait = result[(kind, check_id)]
+        aggregate_tiers = _aggregate_trait_tiers(record, external_id, trait.activation_list)
+        incoming_tiers = aggregate_tiers
+        if incoming_tiers is None:
+            level = integer(record.get("level"), f"trait {external_id} level")
+            activation_count = integer(record.get("num"), f"trait {external_id} num")
+            incoming_tiers = [
+                TraitTierData(
+                    external_id=external_id,
+                    tier_order=level,
+                    activation_count=activation_count,
+                    level=level,
+                    description=optional_string(record, "desc", f"trait {external_id}"),
+                    real_description=optional_string(record, "realDesc", f"trait {external_id}"),
+                    source_attributes=_source(record, {"color", "desc2", "values", "prefix"}),
+                )
+            ]
         by_level = tiers.setdefault((kind, check_id), {})
-        if level in by_level:
-            raise DataValidationError(f"trait {check_id}: duplicate level {level}")
-        by_level[level] = tier
+        for tier in incoming_tiers:
+            if tier.level in by_level:
+                raise DataValidationError(f"trait {check_id}: duplicate level {tier.level}")
+            by_level[tier.level] = tier
 
     finalized: list[TraitData] = []
     for key, trait in result.items():

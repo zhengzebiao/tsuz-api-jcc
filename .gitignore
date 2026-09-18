@@ -10,3 +10,4 @@ raw/.sync-*/
 !.env.test.example
 !.env.product.example
 !.env.deploy.example
+raw/

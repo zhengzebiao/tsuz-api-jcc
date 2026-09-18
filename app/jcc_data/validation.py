@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -86,7 +87,7 @@ def split_ids(value: Any, context: str, *, sentinels: frozenset[str] = frozenset
         raise DataValidationError(f"{context}: missing relationship")
     if not isinstance(value, str):
         value = str(value)
-    parts = [part.strip() for part in value.split("|")]
+    parts = [part.strip() for part in re.split(r"[|｜]", value)]
     if any(not part for part in parts):
         raise DataValidationError(f"{context}: empty relationship id")
     if len(parts) != len(set(parts)):

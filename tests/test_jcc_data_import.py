@@ -312,6 +312,75 @@ def test_adapter_builds_complete_structured_snapshot(tmp_path: Path) -> None:
     assert structured.adventures[0].external_id == "adventure-1"
 
 
+def test_adapter_expands_aggregate_trait_tiers_with_full_width_delimiters(tmp_path: Path) -> None:
+    payloads = _payloads()
+    payloads["job"]["data"]["job-1"].update(
+        maxLevel="4",
+        numList="2｜3｜4｜5",
+    )
+    payloads["trait"]["data"] = {
+        "trait-job-aggregate": {
+            "id": "trait-job-aggregate",
+            "checkId": "job-1",
+            "name": "测试职业",
+            "type": 1,
+            "level": 1,
+            "maxLevel": "4",
+            "num": "2｜3｜4｜5",
+            "numList": "2｜3｜4｜5",
+            "values": "2｜3｜4｜5",
+            "desc": "聚合职业描述",
+            "realDesc": "(2)两人效果｜(3)三人效果｜(4)四人效果｜(5)五人效果",
+        },
+        "trait-race-1": payloads["trait"]["data"]["trait-race-1"],
+    }
+
+    structured = _structured(tmp_path, payloads)
+    job = next(item for item in structured.traits if item.external_id == "job-1")
+
+    assert job.activation_list == [2, 3, 4, 5]
+    assert [tier.external_id for tier in job.tiers] == [
+        "trait-job-aggregate:1",
+        "trait-job-aggregate:2",
+        "trait-job-aggregate:3",
+        "trait-job-aggregate:4",
+    ]
+    assert [tier.activation_count for tier in job.tiers] == [2, 3, 4, 5]
+    assert [tier.real_description for tier in job.tiers] == [
+        "(2)两人效果｜",
+        "(3)三人效果｜",
+        "(4)四人效果｜",
+        "(5)五人效果",
+    ]
+
+
+def test_adapter_rejects_inconsistent_aggregate_trait_tiers(tmp_path: Path) -> None:
+    payloads = _payloads()
+    payloads["job"]["data"]["job-1"].update(maxLevel="2", numList="2｜3")
+    payloads["trait"]["data"]["trait-job-1"].update(
+        maxLevel="2",
+        num="2｜4",
+        numList="2｜4",
+        values="2｜4",
+        realDesc="(2)两人效果｜(4)四人效果",
+    )
+
+    with pytest.raises(DataValidationError, match="aggregate num does not match numList"):
+        _structured(tmp_path, payloads)
+
+
+def test_adapter_builds_current_official_snapshot() -> None:
+    directory = Path(__file__).resolve().parents[1] / "raw" / "18.18.2a-S19"
+    if not directory.exists():
+        pytest.skip("current official snapshot is not present")
+
+    structured = build_structured_snapshot(read_snapshot(directory))
+    job = next(item for item in structured.traits if item.kind == "job" and item.external_id == "350")
+
+    assert job.activation_list == [2, 3, 4, 5]
+    assert [tier.activation_count for tier in job.tiers] == [2, 3, 4, 5]
+
+
 def test_adapter_rejects_unknown_non_sentinel_relationship(tmp_path: Path) -> None:
     payloads = _payloads()
     payloads["chess"]["data"]["hero-1"]["class"] = "unknown-job"
