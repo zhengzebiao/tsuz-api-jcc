@@ -16,7 +16,7 @@
 
 本阶段实际完成：
 
-1. 新增 `agent_conversations`、`agent_messages` ORM 模型及 Alembic revision `0003_agent_conversations_messages`；
+1. 新增 `agent_conversations`、`agent_messages` ORM 模型及 Alembic revision `0003_agent_conversations`；
 2. 新增 `/api/agent` 受 `jcc:agent:chat` 保护的会话创建、列表、详情、修改、归档和消息分页/提交接口；
 3. 强制使用 JWT `sub` 作为 `user_id`，消息使用 `user/queued`、有效策略模式和会话内 sequence；
 4. 实现同会话 `client_request_id` 幂等重放和冲突 409；归档后允许读取但禁止写入；
@@ -61,7 +61,7 @@ JWT sub/user_id + jcc:agent:chat
 
 ### 2.3 数据、迁移和状态
 
-- [alembic/versions/0003_agent_conversations_messages.py](../alembic/versions/0003_agent_conversations_messages.py)：从 `0002_jcc_structured_data` 创建两张表、外键、索引、策略/状态/归档/长度/sequence 约束；downgrade 仅删除本阶段新表；
+- [alembic/versions/0003_agent_conversations.py](../alembic/versions/0003_agent_conversations.py)：从 `0002_jcc_structured_data` 创建两张表、外键、索引、策略/状态/归档/长度/sequence 约束；downgrade 仅删除本阶段新表；
 - 迁移未修改既有 `jcc_*`、`app_settings` 或 `sample_profiles` 表；
 - 消息保留 `error_code`、`started_at`、`completed_at` 等后续阶段字段，但阶段一不产生运行状态转移。
 
@@ -109,9 +109,9 @@ JWT sub/user_id + jcc:agent:chat
 | 检查 | 命令或方法 | 结果 | 证据/说明 |
 | --- | --- | --- | --- |
 | 定向测试 | `./.venv/bin/pytest tests/test_agent_conversations.py -q` | 通过 | 10 passed，2 条第三方 deprecation warnings |
-| 定向 Ruff | `./.venv/bin/ruff check app/conversations app/api/agent.py app/main.py app/models/__init__.py alembic/env.py alembic/versions/0003_agent_conversations_messages.py tests/test_agent_conversations.py` | 通过 | All checks passed |
-| Python 编译 | `./.venv/bin/python -m compileall -q app alembic/versions/0003_agent_conversations_messages.py tests/test_agent_conversations.py` | 通过 | 无输出 |
-| Alembic head/current | `./.venv/bin/alembic heads && ./.venv/bin/alembic current` | 通过/信息 | head 为 `0003_agent_conversations_messages`；长期开发库 current 仍为 `0002_jcc_structured_data`，未擅自迁移 |
+| 定向 Ruff | `./.venv/bin/ruff check app/conversations app/api/agent.py app/main.py app/models/__init__.py alembic/env.py alembic/versions/0003_agent_conversations.py tests/test_agent_conversations.py` | 通过 | All checks passed |
+| Python 编译 | `./.venv/bin/python -m compileall -q app alembic/versions/0003_agent_conversations.py tests/test_agent_conversations.py` | 通过 | 无输出 |
+| Alembic head/current | `./.venv/bin/alembic heads && ./.venv/bin/alembic current` | 通过/信息 | head 为 `0003_agent_conversations`；长期开发库 current 仍为 `0002_jcc_structured_data`，未擅自迁移 |
 | Migration round-trip | 临时 SQLite `upgrade head → downgrade 0002 → upgrade head` | 通过 | 迁移创建/删除/重建成功，临时文件已清理 |
 | Deploy 回归 | `./.venv/bin/pytest tests/test_deployment_config.py -q` | 通过 | 5 passed；test/product concurrency group 格式已修复 |
 | 锁文件 | `pdm lock --check && echo "PDM lock check passed"` | 通过 | 用户本地控制台输出 `PDM lock check passed` |
@@ -137,7 +137,7 @@ JWT sub/user_id + jcc:agent:chat
 
 | 编号 | 验收标准 | 结果 | 验证证据 |
 | --- | --- | --- | --- |
-| AC-1-01 | conversation/message 表和迁移可用 | 通过（临时 SQLite） | `0003_agent_conversations_messages.py` migration round-trip |
+| AC-1-01 | conversation/message 表和迁移可用 | 通过（临时 SQLite） | `0003_agent_conversations.py` migration round-trip |
 | AC-1-02 | 用户只能读取自己的会话/消息 | 通过 | `tests/test_agent_conversations.py` 用户隔离测试 |
 | AC-1-03 | gamble/operation 校验及消息覆盖持久化 | 通过 | 定向 API 测试策略创建/继承/覆盖 |
 | AC-1-04 | 会话 CRUD、归档后只读 | 通过 | CRUD/归档测试 |

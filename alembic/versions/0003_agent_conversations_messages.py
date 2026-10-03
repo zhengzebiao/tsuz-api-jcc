@@ -1,6 +1,6 @@
 """add agent conversations and messages
 
-Revision ID: 0003_agent_conversations_messages
+Revision ID: 0003_agent_conversations
 Revises: 0002_jcc_structured_data
 Create Date: 2026-10-03
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0003_agent_conversations_messages"
+revision: str = "0003_agent_conversations"
 down_revision: str | None = "0002_jcc_structured_data"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
