@@ -1224,6 +1224,12 @@ pyproject.toml
 
 ## 阶段一：会话和消息持久化
 
+> 阶段状态：部分完成。代码、定向测试、Deploy 回归、PDM 锁文件检查和临时 SQLite migration round-trip 已完成；隔离 PostgreSQL migration/并发验证待补。
+>
+> 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_1_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_1_PLAN.md)
+>
+> 阶段执行记录：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_1_EXECUTION.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_1_EXECUTION.md)
+
 实现：
 
 - conversation/message 表；

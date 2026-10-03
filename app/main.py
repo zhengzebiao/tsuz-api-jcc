@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.agent import router as agent_router
 from app.api.example import router as feature_router
 from app.api.health import router as health_router
 from app.api.internal import router as internal_router
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health_router)
+    app.include_router(agent_router)
     app.include_router(feature_router)
     app.include_router(internal_router)
     app.include_router(jcc_router)
