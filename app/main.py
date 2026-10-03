@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.agent.factory import build_runtime
 from app.api.agent import router as agent_router
 from app.api.example import router as feature_router
 from app.api.health import router as health_router
@@ -12,11 +15,29 @@ from app.core.logging import RequestIdMiddleware, configure_logging
 
 def create_app() -> FastAPI:
     configure_logging()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        runtime = (
+            build_runtime(settings)
+            if settings.llm_model and settings.llm_base_url and settings.llm_api_key
+            else None
+        )
+        app.state.agent_runtime = runtime
+        if runtime is not None:
+            await runtime.start()
+        try:
+            yield
+        finally:
+            if runtime is not None:
+                await runtime.stop(timeout_seconds=settings.agent_shutdown_timeout_seconds)
+
     app = FastAPI(
         title=settings.service_name,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url="/redoc" if settings.redoc_enabled else None,
         openapi_url="/openapi.json" if settings.openapi_enabled else None,
+        lifespan=lifespan,
     )
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(

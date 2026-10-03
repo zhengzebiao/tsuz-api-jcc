@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.agent.events import AgentEvent, heartbeat
+from app.agent.runtime import ConversationRuntimeManager
 from app.conversations import service
 from app.conversations.models import AgentConversation, AgentMessage
 from app.conversations.schemas import (
@@ -20,6 +25,7 @@ from app.conversations.schemas import (
     MessageListResponse,
     MessageResponse,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.deps.auth import CurrentUser, require_scope
 
@@ -65,7 +71,14 @@ def _conversation_response(item: AgentConversation) -> ConversationResponse:
     )
 
 
-def _message_response(item: AgentMessage) -> MessageResponse:
+def _status_event(item: AgentMessage, run_id: str) -> str:
+    return AgentEvent(
+        name=f"message.{item.status}",
+        data={"message_id": item.id, "run_id": run_id, "status": item.status},
+    ).sse()
+
+
+def _message_response(item: AgentMessage, run_id: str | None = None) -> MessageResponse:
     return MessageResponse(
         id=item.id,
         conversation_id=item.conversation_id,
@@ -78,6 +91,7 @@ def _message_response(item: AgentMessage) -> MessageResponse:
         created_at=_utc_datetime(item.created_at),
         started_at=_utc_datetime(item.started_at),
         completed_at=_utc_datetime(item.completed_at),
+        run_id=run_id,
     )
 
 
@@ -188,14 +202,88 @@ def list_messages(
     )
 
 
+@router.get("/conversations/{conversation_id}/messages/{message_id}/events")
+async def message_events(
+    conversation_id: str,
+    message_id: str,
+    request: Request,
+    current_user: CurrentUser = _USER,
+    db: Session = _DB,
+) -> StreamingResponse:
+    try:
+        message = service.get_message_for_user(
+            db, user_id=current_user.user_id, conversation_id=conversation_id, message_id=message_id
+        )
+        run = service.get_run_for_user(
+            db, user_id=current_user.user_id, conversation_id=conversation_id, message_id=message_id
+        )
+    except service.ConversationError as exc:
+        raise _error(exc) from exc
+    runtime: ConversationRuntimeManager | None = getattr(request.app.state, "agent_runtime", None)
+    if runtime is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent runtime unavailable")
+    conversation_runtime, subscriber = await runtime.subscribe(conversation_id)
+    db.expire(message)
+    db.expire(run)
+    db.refresh(message)
+    db.refresh(run)
+
+    async def stream() -> AsyncIterator[str]:
+        try:
+            yield _status_event(message, run.id)
+            if message.status in {"completed", "failed", "cancelled"}:
+                return
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    emitted = await asyncio.wait_for(
+                        subscriber.get(), timeout=settings.agent_sse_heartbeat_seconds
+                    )
+                    yield emitted.sse()
+                    if emitted.name in {"message.completed", "message.failed", "message.cancelled"}:
+                        return
+                except TimeoutError:
+                    yield heartbeat()
+        finally:
+            await runtime.unsubscribe(conversation_runtime, subscriber)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/conversations/{conversation_id}/messages/{message_id}/cancel", response_model=MessageResponse)
+async def cancel_message(
+    conversation_id: str,
+    message_id: str,
+    request: Request,
+    current_user: CurrentUser = _USER,
+    db: Session = _DB,
+) -> MessageResponse:
+    try:
+        message, run = service.request_cancel(
+            db, user_id=current_user.user_id, conversation_id=conversation_id, message_id=message_id
+        )
+    except service.ConversationError as exc:
+        raise _error(exc) from exc
+    runtime: ConversationRuntimeManager | None = getattr(request.app.state, "agent_runtime", None)
+    if runtime is not None:
+        await runtime.cancel(conversation_id=conversation_id, message_id=message.id, run_id=run.id)
+    return _message_response(message, run.id)
+
+
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=MessageAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def create_message(
+async def create_message(
     conversation_id: str,
     payload: MessageCreate,
+    request: Request,
     current_user: CurrentUser = _USER,
     db: Session = _DB,
 ) -> MessageAcceptedResponse:
@@ -210,4 +298,17 @@ def create_message(
         )
     except service.ConversationError as exc:
         raise _error(exc) from exc
-    return MessageAcceptedResponse.model_validate(_message_response(message))
+    run = service.ensure_run(db, message=message)
+    db.commit()
+    runtime: ConversationRuntimeManager | None = getattr(request.app.state, "agent_runtime", None)
+    if runtime is None and settings.llm_model and settings.llm_base_url and settings.llm_api_key:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent runtime unavailable")
+    if runtime is not None and run.status == "queued":
+        try:
+            # The message and run are committed before entering the in-process queue.
+            await runtime.enqueue(message_id=message.id, run_id=run.id, conversation_id=conversation_id)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent runtime unavailable"
+            ) from exc
+    return MessageAcceptedResponse.model_validate(_message_response(message, run.id))

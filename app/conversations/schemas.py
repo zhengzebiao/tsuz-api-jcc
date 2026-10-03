@@ -99,7 +99,7 @@ class MessageResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
-    run_id: None = None
+    run_id: str | None = None
 
 
 class ConversationListResponse(BaseModel):

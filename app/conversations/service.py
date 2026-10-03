@@ -8,8 +8,10 @@ from contextlib import contextmanager
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.agent.models import AgentRun
 from app.conversations import repository
 from app.conversations.models import AgentConversation, AgentMessage
+from app.core.config import settings
 
 
 class ConversationError(Exception):
@@ -151,3 +153,61 @@ def create_message(
                 if existing is not None and _same_request(existing, content=content, strategy_mode=effective_mode):
                     return existing
             raise
+
+
+def ensure_run(
+    db: Session,
+    *,
+    message: AgentMessage,
+    provider: str | None = None,
+    model: str | None = None,
+) -> AgentRun:
+    with _transaction(db):
+        existing = repository.get_run(db, conversation_id=message.conversation_id, message_id=message.id)
+        if existing is not None:
+            return existing
+        return repository.create_run(
+            db,
+            message=message,
+            provider=provider or settings.llm_provider,
+            model=model or settings.llm_model,
+        )
+
+
+def get_message_for_user(db: Session, *, user_id: str, conversation_id: str, message_id: str) -> AgentMessage:
+    get_conversation(db, user_id=user_id, conversation_id=conversation_id)
+    message = repository.get_message(db, conversation_id=conversation_id, message_id=message_id)
+    if message is None:
+        raise ConversationNotFound
+    return message
+
+
+def get_run_for_user(db: Session, *, user_id: str, conversation_id: str, message_id: str) -> AgentRun:
+    message = get_message_for_user(db, user_id=user_id, conversation_id=conversation_id, message_id=message_id)
+    run = repository.get_run(db, conversation_id=conversation_id, message_id=message.id)
+    if run is None:
+        raise ConversationNotFound
+    return run
+
+
+def request_cancel(
+    db: Session,
+    *,
+    user_id: str,
+    conversation_id: str,
+    message_id: str,
+) -> tuple[AgentMessage, AgentRun]:
+    with _transaction(db):
+        message = get_message_for_user(db, user_id=user_id, conversation_id=conversation_id, message_id=message_id)
+        run = repository.get_run(db, conversation_id=conversation_id, message_id=message.id)
+        if run is None:
+            raise ConversationNotFound
+        if run.status in ("queued", "running", "cancelling"):
+            repository.set_run_cancel_requested(db, run)
+            repository.update_message_status(
+                db,
+                message,
+                from_statuses=("queued", "running", "streaming", "cancelling"),
+                status="cancelling",
+            )
+        return message, run

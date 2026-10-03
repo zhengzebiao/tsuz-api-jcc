@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     jcc_data_sync_timeout_seconds: float = 30.0
     jcc_data_sync_retries: int = 2
 
+    llm_provider: str = "openai_compatible"
+    llm_model: str = ""
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_timeout_seconds: float = 120.0
+    llm_max_tokens: int = 2048
+    agent_queue_maxsize: int = 1
+    agent_execution_timeout_seconds: float = 180.0
+    agent_shutdown_timeout_seconds: float = 10.0
+    agent_sse_heartbeat_seconds: float = 15.0
+    agent_context_messages: int = 10
+
     token_blacklist_prefix: str = "auth:test:blacklist:jti:"
     session_prefix: str = "auth:test:session:"
 

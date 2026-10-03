@@ -1,6 +1,7 @@
 from logging.config import fileConfig
 
 from alembic import context
+from app.agent import models as agent_models  # noqa: F401
 from app.conversations import models as conversation_models  # noqa: F401
 from app.core.config import settings
 from app.core.database import Base

@@ -1251,6 +1251,14 @@ pyproject.toml
 
 ## 阶段二：队列、LLM 和 SSE
 
+> 阶段状态：部分完成。运行记录、单进程 latest-wins runtime、OpenAI-compatible 文本流、SSE/cancel API、单 worker 配置和自动化测试已落地；PostgreSQL migration/并发、真实 LLM、SSE 端到端和生产部署验证待补。
+>
+> 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_2_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_2_PLAN.md)
+>
+> 阶段执行记录：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_2_EXECUTION.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_2_EXECUTION.md)
+>
+> 本阶段确认：继续使用通用 OpenAI-compatible `LLMClient`，不引入 Anthropic SDK；用户消息正文保持原始提问，模型部分输出保存到 run 并在成功时另建 assistant 消息。
+
 实现：
 
 - FastAPI lifespan；

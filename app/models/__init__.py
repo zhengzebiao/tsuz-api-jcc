@@ -1,3 +1,4 @@
+from app.agent.models import AgentRun
 from app.conversations.models import AgentConversation, AgentMessage
 from app.jcc_data.models import (
     JccAdventure,
@@ -16,6 +17,7 @@ from app.jcc_data.models import (
 __all__ = [
     "AgentConversation",
     "AgentMessage",
+    "AgentRun",
     "JccAdventure",
     "JccAugment",
     "JccCurrentSnapshot",
