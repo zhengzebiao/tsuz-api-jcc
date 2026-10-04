@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
-from app.agent.models import AgentRun
+from app.agent.models import AgentMessageSource, AgentRun, AgentToolCall
 from app.conversations.models import AgentConversation, AgentMessage
 
 
@@ -188,6 +188,75 @@ def create_run(
     db.add(run)
     db.flush()
     return run
+
+
+def create_tool_call(
+    db: Session,
+    *,
+    run: AgentRun,
+    message: AgentMessage,
+    tool_use_id: str,
+    tool_name: str,
+    input_json: dict,
+    snapshot_id: int | None = None,
+    snapshot_version: str | None = None,
+) -> AgentToolCall:
+    call = AgentToolCall(
+        run_id=run.id,
+        message_id=message.id,
+        conversation_id=message.conversation_id,
+        tool_use_id=tool_use_id,
+        tool_name=tool_name,
+        input_json=input_json,
+        snapshot_id=snapshot_id,
+        snapshot_version=snapshot_version,
+    )
+    db.add(call)
+    db.flush()
+    return call
+
+
+def update_tool_call(
+    db: Session,
+    call: AgentToolCall,
+    *,
+    status: str,
+    output_json: dict | None = None,
+    error_code: str | None = None,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
+    duration_ms: int | None = None,
+) -> bool:
+    values: dict[str, object] = {"status": status}
+    for name, value in (("output_json", output_json), ("error_code", error_code), ("started_at", started_at), ("completed_at", completed_at), ("duration_ms", duration_ms)):
+        if value is not None:
+            values[name] = value
+    result = db.execute(update(AgentToolCall).where(AgentToolCall.id == call.id, AgentToolCall.status.in_(("requested", "running"))).values(**values))
+    if result.rowcount:
+        db.refresh(call)
+        return True
+    return False
+
+
+def create_message_source(
+    db: Session,
+    *,
+    message: AgentMessage,
+    run: AgentRun,
+    source_type: str,
+    snapshot_id: int | None,
+    version: str | None,
+    tool_call_id: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | None = None,
+    rank: int | None = None,
+    excerpt: str | None = None,
+    metadata: dict | None = None,
+) -> AgentMessageSource:
+    source = AgentMessageSource(message_id=message.id, run_id=run.id, tool_call_id=tool_call_id, source_type=source_type, snapshot_id=snapshot_id, version=version, entity_type=entity_type, entity_id=entity_id, rank=rank, excerpt=excerpt, metadata_=metadata)
+    db.add(source)
+    db.flush()
+    return source
 
 
 def update_run_status(

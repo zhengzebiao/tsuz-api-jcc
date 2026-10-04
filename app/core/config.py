@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     agent_shutdown_timeout_seconds: float = 10.0
     agent_sse_heartbeat_seconds: float = 15.0
     agent_context_messages: int = 10
+    agent_max_tool_iterations: int = 8
+    agent_tool_timeout_seconds: float = 15.0
+    agent_tool_input_max_bytes: int = 16384
+    agent_tool_output_max_bytes: int = 64000
+    agent_source_excerpt_max_chars: int = 1000
 
     token_blacklist_prefix: str = "auth:test:blacklist:jti:"
     session_prefix: str = "auth:test:session:"

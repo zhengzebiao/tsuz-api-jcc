@@ -1,14 +1,29 @@
-"""Provider-neutral asynchronous streaming LLM contract."""
+"""Provider-neutral asynchronous LLM contract."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
 class TextDelta:
     content: str
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    id: str
+    name: str
+    arguments: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class LLMResponse:
+    text: str
+    tool_calls: tuple[ToolCall, ...] = ()
+    finish_reason: str | None = None
 
 
 class LLMError(Exception):
@@ -47,4 +62,13 @@ class LLMClient:
         messages: Sequence[Mapping[str, str]],
         system: str,
     ) -> AsyncIterator[TextDelta]:
+        raise NotImplementedError
+
+    async def complete_with_tools(
+        self,
+        *,
+        messages: Sequence[Mapping[str, Any]],
+        system: str,
+        tools: Sequence[Mapping[str, Any]],
+    ) -> LLMResponse:
         raise NotImplementedError

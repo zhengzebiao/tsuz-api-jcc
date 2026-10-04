@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
 
 from sqlalchemy.orm import Session
@@ -121,6 +122,10 @@ class ConversationRuntimeManager:
                 runtime.cancel_event.set()
             if runtime.current_task is not None and not runtime.current_task.done():
                 runtime.current_task.cancel()
+            # Persist the terminal state immediately; the orchestrator also performs
+            # its conditional cleanup, but cancellation must be observable without
+            # waiting for that task's thread handoff to finish.
+            await asyncio.to_thread(self._mark_cancelled, message_id, run_id)
             await self._publish(runtime, _event("message.cancelled", message_id, run_id, status="cancelled"))
         else:
             cancelled = await asyncio.to_thread(self._cancel_queued_message, message_id, run_id)
@@ -213,6 +218,35 @@ class ConversationRuntimeManager:
                     from_statuses=("running", "streaming", "cancelling"),
                     status="queued",
                 )
+            db.commit()
+        finally:
+            db.close()
+
+    def _mark_cancelled(self, message_id: str, run_id: str) -> None:
+        db = self.session_factory()
+        try:
+            message = db.get(AgentMessage, message_id)
+            run = db.get(AgentRun, run_id)
+            if message is None or run is None:
+                return
+            now = datetime.now(UTC)
+            repository.update_run_status(
+                db,
+                run,
+                from_statuses=("queued", "running", "cancelling"),
+                status="cancelled",
+                cancel_requested=True,
+                error_code="cancelled",
+                completed_at=now,
+            )
+            repository.update_message_status(
+                db,
+                message,
+                from_statuses=("queued", "running", "streaming", "cancelling"),
+                status="cancelled",
+                error_code="cancelled",
+                completed_at=now,
+            )
             db.commit()
         finally:
             db.close()

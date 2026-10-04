@@ -1282,6 +1282,12 @@ pyproject.toml
 
 ## 阶段三：工具调用和阵容推导
 
+> 阶段状态：实施中。工具/source 持久化契约、白名单结构化工具、系统推导工具和 provider-neutral tool-call 基础已落地；编排器多轮工具循环、run 级固定 snapshot、SSE 工具/source 事件及完整阶段验收待完成。
+>
+> 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_3_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_3_PLAN.md)
+>
+> 阶段执行记录：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_3_EXECUTION.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_3_EXECUTION.md)
+
 实现：
 
 - 工具注册表；

@@ -18,8 +18,10 @@ from app.agent.llm.base import (
     LLMConfigurationError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMResponse,
     LLMTimeoutError,
     TextDelta,
+    ToolCall,
 )
 
 
@@ -43,6 +45,56 @@ class OpenAICompatibleClient(LLMClient):
         self.max_tokens = max_tokens
         self._client = client
         self._owns_client = client is None
+
+    async def complete_with_tools(
+        self,
+        *,
+        messages: Sequence[Mapping[str, object]],
+        system: str,
+        tools: Sequence[Mapping[str, object]],
+    ) -> LLMResponse:
+        if not self.model or not self.base_url or not self.api_key:
+            raise LLMConfigurationError("LLM endpoint is not configured")
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "system", "content": system}, *messages],
+            "max_tokens": self.max_tokens,
+            "tools": list(tools),
+            "tool_choice": "auto",
+        }
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        client = self._client or httpx.AsyncClient(timeout=self.timeout_seconds)
+        try:
+            response = await client.post(f"{self.base_url}/chat/completions", json=payload, headers=headers)
+            if response.status_code in (401, 403):
+                raise LLMAuthenticationError
+            if response.status_code == 429:
+                raise LLMRateLimitError
+            if response.status_code >= 400:
+                raise LLMProviderError(f"provider returned status {response.status_code}")
+            decoded = response.json()
+            choice = (decoded.get("choices") or [{}])[0]
+            message = choice.get("message") or {}
+            calls = []
+            for raw in message.get("tool_calls") or []:
+                function = raw.get("function") or {}
+                try:
+                    arguments = json.loads(function.get("arguments") or "{}")
+                except json.JSONDecodeError as exc:
+                    raise LLMProviderError("provider returned invalid tool arguments") from exc
+                if not isinstance(arguments, dict):
+                    raise LLMProviderError("provider returned invalid tool arguments")
+                calls.append(ToolCall(id=str(raw.get("id") or ""), name=str(function.get("name") or ""), arguments=arguments))
+            return LLMResponse(text=str(message.get("content") or ""), tool_calls=tuple(calls), finish_reason=choice.get("finish_reason"))
+        except httpx.TimeoutException as exc:
+            raise LLMTimeoutError from exc
+        except (LLMAuthenticationError, LLMRateLimitError, LLMProviderError):
+            raise
+        except httpx.HTTPError as exc:
+            raise LLMProviderError from exc
+        finally:
+            if self._owns_client:
+                await client.aclose()
 
     async def stream(
         self,
