@@ -95,7 +95,7 @@ class AgentMessageSource(Base):
     __tablename__ = "agent_message_sources"
     __table_args__ = (
         CheckConstraint(
-            "source_type IN ('official_structured_data', 'system_derived', 'model_explanation')",
+            "source_type IN ('official_structured_data', 'system_derived', 'model_explanation', 'rag_document')",
             name="ck_agent_message_sources_type",
         ),
         Index("ix_agent_message_sources_message_rank", "message_id", "rank"),

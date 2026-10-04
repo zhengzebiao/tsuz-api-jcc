@@ -1309,6 +1309,14 @@ pyproject.toml
 
 ## 阶段四：RAG
 
+> 阶段状态：部分完成（RAG 文档模型、规范化/hash、离线索引骨架、检索工具和测试已落地；隔离 PostgreSQL/pgvector migration、真实全文/向量 SQL 和真实 embedding provider 验证待执行）。
+>
+> 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_PLAN.md)
+>
+> 阶段执行记录：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_EXECUTION.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_EXECUTION.md)
+>
+> 本阶段确认：RAG 使用 generation/current pointer 保证索引原子切换；embedding 仅由离线命令生成，测试使用确定性 Fake provider；`search_knowledge` 使用 run 固定 snapshot，精确属性问题仍由结构化工具优先处理。
+
 实现：
 
 - `rag_documents`；

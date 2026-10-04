@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     agent_tool_input_max_bytes: int = 16384
     agent_tool_output_max_bytes: int = 64000
     agent_source_excerpt_max_chars: int = 1000
+    rag_enabled: bool = True
+    rag_embedding_provider: str = "fake"
+    rag_embedding_model: str = "fake-test-1024"
+    rag_embedding_dimension: int = 1024
+    rag_embedding_batch_size: int = 32
+    rag_retrieval_default_limit: int = 5
+    rag_retrieval_max_limit: int = 20
 
     token_blacklist_prefix: str = "auth:test:blacklist:jti:"
     session_prefix: str = "auth:test:session:"

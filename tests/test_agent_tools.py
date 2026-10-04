@@ -39,7 +39,7 @@ def context(factory, snapshot_id: int = 1) -> ToolContext:
 
 def test_registry_is_static_and_excludes_unsafe_tools() -> None:
     names = {item.name for item in build_default_registry().definitions()}
-    assert "search_knowledge" not in names
+    assert "search_knowledge" in names
     assert not names.intersection({"execute_sql", "execute_shell", "write_jcc_data", "switch_snapshot"})
 
 

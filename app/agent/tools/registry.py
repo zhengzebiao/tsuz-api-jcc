@@ -51,6 +51,7 @@ class ToolRegistry:
 
 def build_default_registry() -> ToolRegistry:
     from app.agent.tools.lineup import derive_lineup_candidates
+    from app.agent.tools.retrieval import search_knowledge
     from app.agent.tools.schemas import (
         DeriveLineupInput,
         EmptyInput,
@@ -60,6 +61,7 @@ def build_default_registry() -> ToolRegistry:
         SearchEquipmentInput,
         SearchGalaxiesInput,
         SearchHeroesInput,
+        SearchKnowledgeInput,
         SearchTraitsInput,
     )
     from app.agent.tools.structured import (
@@ -87,6 +89,7 @@ def build_default_registry() -> ToolRegistry:
             ToolDefinition("search_equipment", "Search official equipment in the fixed snapshot.", SearchEquipmentInput, search_equipment),
             ToolDefinition("search_galaxies", "Search official galaxies in the fixed snapshot.", SearchGalaxiesInput, search_galaxies),
             ToolDefinition("search_heroes", "Search official heroes in the fixed snapshot.", SearchHeroesInput, search_heroes),
+            ToolDefinition("search_knowledge", "Search version-pinned reference documents for terminology and fuzzy gameplay intent; use structured tools for exact values.", SearchKnowledgeInput, search_knowledge),
             ToolDefinition("search_traits", "Search official traits in the fixed snapshot.", SearchTraitsInput, search_traits),
         )
     )

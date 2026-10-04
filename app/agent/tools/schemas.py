@@ -62,6 +62,11 @@ class DeriveLineupInput(StrictToolModel):
     candidate_limit: int = Field(default=3, ge=1, le=10)
 
 
+class SearchKnowledgeInput(StrictToolModel):
+    query: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
 @dataclass(frozen=True)
 class SnapshotContext:
     snapshot_id: int
