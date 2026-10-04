@@ -60,11 +60,11 @@ git diff --check
 
 | 编号 | 验收标准 | 当前状态 | 证据 |
 | --- | --- | --- | --- |
-| AC-3-01 | 非法工具参数不会执行 | 部分满足 | `app/agent/tools/schemas.py`、registry；执行前工具循环测试待补 |
+| AC-3-01 | 非法工具参数不会执行 | 部分满足 | schema/registry 与 loop 已有拒绝路径；专项测试待补 |
 | AC-3-02 | 不允许任意 SQL | 满足基础边界 | 固定 registry 和显式 SQLAlchemy 查询；专项测试待补 |
-| AC-3-03 | 工具调用可审计 | 部分满足 | 0005 ORM/migration/repository 已建立；orchestrator 接入和测试待补 |
+| AC-3-03 | 工具调用可审计 | 部分满足 | 0005 ORM/migration/repository 与 orchestrator 写入已建立；状态专项测试待补 |
 | AC-3-04 | 阵容结果明确标记系统推导 | 满足工具契约 | `lineup.py` 返回 `is_system_derived`/`source_type`；端到端测试待补 |
-| AC-3-05 | 固定 snapshot，避免混合版本 | 部分满足 | 工具 context 要求固定 snapshot；run context 持久化和双 snapshot 集成测试待补 |
+| AC-3-05 | 固定 snapshot，避免混合版本 | 部分满足 | run 已保存 snapshot 元数据并向工具传递 context；双 snapshot 集成测试待补 |
 
 ## 7. 风险与交付边界
 

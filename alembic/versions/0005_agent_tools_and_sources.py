@@ -18,6 +18,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    for column in (
+        sa.Column("snapshot_id", sa.Integer(), nullable=True),
+        sa.Column("snapshot_mode", sa.String(length=32), nullable=True),
+        sa.Column("snapshot_season", sa.String(length=32), nullable=True),
+        sa.Column("snapshot_version", sa.String(length=64), nullable=True),
+        sa.Column("snapshot_revision", sa.Integer(), nullable=True),
+        sa.Column("snapshot_content_hash", sa.String(length=64), nullable=True),
+    ):
+        op.add_column("agent_runs", column)
+
     op.create_table(
         "agent_tool_calls",
         sa.Column("id", sa.String(length=36), nullable=False),
@@ -80,6 +90,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    for column_name in (
+        "snapshot_content_hash",
+        "snapshot_revision",
+        "snapshot_version",
+        "snapshot_season",
+        "snapshot_mode",
+        "snapshot_id",
+    ):
+        op.drop_column("agent_runs", column_name)
+
     op.drop_index("ix_agent_message_sources_snapshot", table_name="agent_message_sources")
     op.drop_index("ix_agent_message_sources_run", table_name="agent_message_sources")
     op.drop_index("ix_agent_message_sources_message_rank", table_name="agent_message_sources")

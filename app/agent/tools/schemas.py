@@ -94,3 +94,4 @@ class ToolExecutionResult:
 class ToolContext:
     snapshot: SnapshotContext
     session_factory: Any
+    cancel_event: Any | None = None

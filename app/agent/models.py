@@ -46,6 +46,12 @@ class AgentRun(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_ms: Mapped[int | None] = mapped_column(Integer)
+    snapshot_id: Mapped[int | None] = mapped_column(Integer)
+    snapshot_mode: Mapped[str | None] = mapped_column(String(32))
+    snapshot_season: Mapped[str | None] = mapped_column(String(32))
+    snapshot_version: Mapped[str | None] = mapped_column(String(64))
+    snapshot_revision: Mapped[int | None] = mapped_column(Integer)
+    snapshot_content_hash: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 

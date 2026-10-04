@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.agent.llm.base import LLMClient
 from app.agent.llm.openai_compatible_client import OpenAICompatibleClient
 from app.agent.runtime import ConversationRuntimeManager
+from app.agent.tools import build_default_registry
 from app.core.config import Settings
 from app.core.database import SessionLocal
 
@@ -26,4 +27,7 @@ def build_runtime(settings: Settings) -> ConversationRuntimeManager:
         queue_maxsize=settings.agent_queue_maxsize,
         execution_timeout_seconds=settings.agent_execution_timeout_seconds,
         context_messages=settings.agent_context_messages,
+        tool_registry=build_default_registry(),
+        max_tool_iterations=settings.agent_max_tool_iterations,
+        tool_timeout_seconds=settings.agent_tool_timeout_seconds,
     )

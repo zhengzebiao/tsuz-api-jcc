@@ -368,6 +368,10 @@ def get_current_snapshot(db: Session, mode: str) -> JccSnapshot | None:
     return _current_snapshot(db, mode)
 
 
+def get_snapshot(db: Session, *, mode: str, snapshot_id: int) -> JccSnapshot | None:
+    return db.scalar(select(JccSnapshot).where(JccSnapshot.id == snapshot_id, JccSnapshot.mode == mode))
+
+
 def get_current_resource_counts(db: Session, mode: str) -> tuple[JccSnapshot, tuple[ResourceCount, ...]]:
     snapshot = _required_current_snapshot(db, mode)
     models = (

@@ -10,7 +10,7 @@
 
 ## 1. 执行范围与当前结论
 
-本次开始实施第三阶段基础契约和持久化边界。已完成工具/source ORM 与 0005 migration、严格工具输入模型、静态白名单、结构化只读工具、确定性系统推导工具、工具审计 repository 方法、LLM tool-call DTO/非流式兼容入口及非敏感配置。尚未完成 orchestrator 多轮工具循环、run 级 snapshot 持久化、tool/source SSE 事件和完整阶段验收，因此阶段不能标记为完成，也未进入阶段四。
+本次开始实施第三阶段基础契约和持久化边界。已完成工具/source ORM 与 0005 migration、严格工具输入模型、静态白名单、结构化只读工具、确定性系统推导工具、工具审计 repository 方法、LLM tool-call DTO、orchestrator 多轮工具循环基础路径、run 级 snapshot 元数据、tool/source SSE 事件和非敏感配置。阶段三专项测试、真实 migration 验证及若干边界完善仍未完成，因此阶段不能标记为完成，也未进入阶段四。
 
 ## 2. 实际变更
 
@@ -36,9 +36,9 @@
 
 ## 4. 未完成或未执行
 
-- orchestrator 尚未接入完整 `LLM → tool → tool_result → LLM` 多轮循环；当前新增 LLM 完整调用入口尚未成为 runtime 默认路径。
-- 尚未在 `AgentRun` 保存 snapshot/version/content hash，也未完成显式 snapshot-scoped repository 全量 API；工具函数要求后端传入 snapshot context，但 context 构建与 run 一致性仍待接入。
-- 尚未发送/回放 `tool.started`、`tool.completed`、`tool.failed`、`source` SSE 事件。
+- tool loop 已接入 runtime factory，但仍需补 Fake LLM 多轮、参数拒绝、工具超时和取消专项测试。
+- `AgentRun` 已增加并写入 snapshot/version/revision/hash 元数据；显式 snapshot-scoped repository 仍需扩展更多关联查询并补双 snapshot 集成测试。
+- `tool.started`、`tool.completed`、`tool.failed`、`source` 事件已发送，但终态回放和 API SSE 专项测试待补。
 - 尚未新增阶段三专用自动化测试文件；非法参数不执行、审计状态、双 snapshot、一轮/多轮 tool call、阵容来源和工具取消专项证据待补。
 - 未执行长期共享数据库或生产 migration；未执行真实 provider/生产部署；未执行隔离 PostgreSQL 0005 round-trip。
 

@@ -271,6 +271,12 @@ def update_run_status(
     completed_at: datetime | None = None,
     duration_ms: int | None = None,
     output_content: str | None = None,
+    snapshot_id: int | None = None,
+    snapshot_mode: str | None = None,
+    snapshot_season: str | None = None,
+    snapshot_version: str | None = None,
+    snapshot_revision: int | None = None,
+    snapshot_content_hash: str | None = None,
 ) -> bool:
     values: dict[str, object] = {"status": status}
     if cancel_requested is not None:
@@ -285,6 +291,16 @@ def update_run_status(
         values["duration_ms"] = duration_ms
     if output_content is not None:
         values["output_content"] = output_content
+    for name, value in (
+        ("snapshot_id", snapshot_id),
+        ("snapshot_mode", snapshot_mode),
+        ("snapshot_season", snapshot_season),
+        ("snapshot_version", snapshot_version),
+        ("snapshot_revision", snapshot_revision),
+        ("snapshot_content_hash", snapshot_content_hash),
+    ):
+        if value is not None:
+            values[name] = value
     result = db.execute(
         update(AgentRun)
         .where(AgentRun.id == run.id, AgentRun.status.in_(from_statuses))
