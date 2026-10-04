@@ -23,6 +23,11 @@ DEFAULT_PERMISSIONS = (
         "display_name": "JCC statistics read",
         "description": "Read JCC resource statistics",
     },
+    {
+        "code": "jcc:agent:chat",
+        "display_name": "JCC agent chat",
+        "description": "Use the JCC AI agent conversation API",
+    },
 )
 
 

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator, Mapping, Sequence
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
 
 from app.agent.llm.base import (
     LLMAuthenticationError,
@@ -69,6 +73,12 @@ class OpenAICompatibleClient(LLMClient):
                 if response.status_code == 429:
                     raise LLMRateLimitError
                 if response.status_code >= 400:
+                    error_body = (await response.aread()).decode("utf-8", errors="replace")[:2000]
+                    logger.warning(
+                        "LLM provider request failed status_code=%s error_body=%s",
+                        response.status_code,
+                        error_body,
+                    )
                     raise LLMProviderError(f"provider returned status {response.status_code}")
                 async for line in response.aiter_lines():
                     if not line or line.startswith(":"):

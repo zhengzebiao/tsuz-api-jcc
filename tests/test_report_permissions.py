@@ -31,6 +31,7 @@ def test_default_permissions_include_all_jcc_scopes(monkeypatch, capsys) -> None
         "jcc:data:read",
         "jcc:record:read",
         "jcc:stats:read",
+        "jcc:agent:chat",
     ]
     assert json.loads(capsys.readouterr().out) == {"accepted": True}
 

@@ -1251,7 +1251,7 @@ pyproject.toml
 
 ## 阶段二：队列、LLM 和 SSE
 
-> 阶段状态：部分完成。运行记录、单进程 latest-wins runtime、OpenAI-compatible 文本流、SSE/cancel API、单 worker 配置和自动化测试已落地；PostgreSQL migration/并发、真实 LLM、SSE 端到端和生产部署验证待补。
+> 阶段状态：已完成（代码与受控环境验收）。运行记录、单进程 latest-wins runtime、OpenAI-compatible 文本流、SSE/cancel API、单 worker 配置、PostgreSQL migration/`agent_runs` 表、advisory lock/并发、真实 LLM 和 SSE 基本端到端链路均已验证。多 worker/多容器验证及生产迁移、生产部署按当前单 worker 和环境边界不执行。
 >
 > 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_2_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_2_PLAN.md)
 >

@@ -105,6 +105,8 @@ class AgentOrchestrator:
                 for item in messages
                 if item.role in ("user", "assistant")
             ]
+            if current is not None and current.role == "user":
+                history.append({"role": "user", "content": current.content})
             return history, current.strategy_mode if current is not None else conversation.strategy_mode
         finally:
             db.close()

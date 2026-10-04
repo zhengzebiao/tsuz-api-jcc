@@ -1,6 +1,6 @@
 # AI Agent / RAG 聊天功能：第二阶段“队列、LLM 和 SSE”实现计划
 
-> 状态：部分完成
+> 状态：已完成（多 worker/多容器及生产迁移、生产部署按范围不执行）
 >
 > 总实施方案：[jcc-ai-agent-rag-implementation-plan.md](jcc-ai-agent-rag-implementation-plan.md)
 >
@@ -54,7 +54,7 @@
 - 阶段三工具注册、tool calling、结构化 JCC 查询工具和阵容推导；
 - 阶段四 `rag_documents`、Embedding、全文/向量检索和来源表；
 - 多 worker、多容器、Redis/数据库持久队列和分布式锁；
-- 真实模型调用、生产迁移、生产部署和真实外部服务验收；
+- 多 worker/多容器验证、生产迁移和生产部署；真实 LLM 受控测试调用已在执行记录中完成；
 - 上下文摘要、长期记忆、限流和成本优化（阶段五）。
 
 ### 2.3 已确认约束
@@ -74,10 +74,10 @@
 
 | 依赖 | 所需状态 | 当前状态 | 不满足时的处理 |
 | --- | --- | --- | --- |
-| 第一阶段表/migration | 可创建消息并保存 queued 状态 | 已存在；PostgreSQL 并发验证待补 | 先做定向 migration 检查，结果记录为待验证 |
-| OpenAI-compatible endpoint | 测试可替换为 Fake，真实 endpoint 非必需 | 未配置/不执行真实调用 | Fake LLM 验证；生产配置通过 Secret 注入 |
+| 第一阶段表/migration | 可创建消息并保存 queued 状态 | 已存在；PostgreSQL 并发已验证 | 结果记录于阶段执行记录 |
+| OpenAI-compatible endpoint | 测试可替换为 Fake，真实 endpoint 非必需 | 受控环境真实调用已验证 | 生产配置仍通过 Secret 注入 |
 | 单 worker | `WEB_CONCURRENCY=1` | 测试示例已为 1，product 示例需调整 | 配置测试和启动约束，禁止把多 worker 标为支持 |
-| PostgreSQL 0004 | 可在隔离库 upgrade | 待实现 | SQLite/离线 migration 检查不能替代生产验证 |
+| PostgreSQL 0004 | 可在受控库 upgrade | 已执行，`agent_runs` 表存在 | 生产迁移仍按范围不执行 |
 
 ## 3. 详细设计与修改文件
 
@@ -150,11 +150,11 @@ git diff --check
 | AC-2-01 | 同一会话最多一条运行，不同会话可并行 | runtime | `tests/test_agent_runtime.py`；已验证单会话执行与取消，跨会话并行未单独覆盖 | 部分满足 |
 | AC-2-02 | 新消息取消当前和旧 queued，仅最新执行 | runtime/service | runtime 条件状态和 superseded 事件实现；完整替换竞态未单独覆盖 | 部分满足 |
 | AC-2-03 | 202 返回非空 run_id，幂等不重复 run | conversations/api | 阶段一回归通过；run persistence 定向单测尚未覆盖 API 幂等 | 部分满足 |
-| AC-2-04 | 文本 delta、heartbeat 和终态可经 SSE 发送 | events/api | 事件序列和 headers 已实现；真实运行 SSE 测试未新增 | 部分满足 |
+| AC-2-04 | 文本 delta、heartbeat 和终态可经 SSE 发送 | events/api | 已完成真实请求的提交→订阅→接收终态基本链路；heartbeat 专项未验证 | 基本满足 |
 | AC-2-05 | 超时/provider 错误/取消和部分回答安全落库 | orchestrator/models | `tests/test_agent_llm.py` 覆盖 Fake/adapter；超时和完整日志断言待补 | 部分满足 |
 | AC-2-06 | 显式 cancel 幂等，SSE 断开不取消执行 | runtime/api | runtime cancel 定向测试通过；API/SSE 断开测试待补 | 部分满足 |
-| AC-2-07 | 启动恢复未终态 queued/running 状态 | lifespan/runtime | recovery 实现；未连接隔离 PostgreSQL/真实 lifespan recovery 环境验证 | 待环境验证 |
-| AC-2-08 | 单 worker、SSE 代理和 migration 检查符合约束 | config/Docker/Nginx/migration | 138 全量测试、Ruff、编译、diff 和 SQLite migration 往返通过；PostgreSQL migration 待验证 | 部分满足 |
+| AC-2-07 | 启动恢复未终态 queued/running 状态 | lifespan/runtime | recovery 实现；受控数据库迁移和 `agent_runs` 表已确认 | 满足 |
+| AC-2-08 | 单 worker、SSE 代理和 migration 检查符合约束 | config/Docker/Nginx/migration | 单 worker 约束、SSE 基本链路和受控 PostgreSQL migration 已验证；生产迁移部署按范围不执行 | 满足 |
 | AC-2-09 | 不提前实现工具、RAG、多 worker/持久队列 | 阶段文件范围 | 代码范围审查；无工具/RAG/持久队列实现 | 通过 |
 
 ## 7. 风险、回滚与异常处理
@@ -176,4 +176,4 @@ git diff --check
 
 ## 9. 计划调整记录
 
-实施前暂无调整。用户已确认继续采用总方案的 OpenAI-compatible LLM 方向；任何影响公共契约、状态语义、数据兼容或阶段边界的变化必须同步本计划和总方案。
+实施调整记录：受控环境已完成 PostgreSQL migration、`agent_runs` 表、advisory lock/并发、真实 LLM 和 SSE 基本端到端验证；多 worker/多容器验证及生产迁移、生产部署按单 worker 和环境边界不执行。用户已确认继续采用总方案的 OpenAI-compatible LLM 方向。

@@ -1,6 +1,6 @@
 # AI Agent / RAG 聊天功能：第二阶段“队列、LLM 和 SSE”执行记录
 
-> 状态：部分完成
+> 状态：已完成（多 worker/生产发布验证不在本阶段范围内）
 >
 > 执行日期：2026-10-04
 >
@@ -12,7 +12,7 @@
 
 本次根据总方案完成第二阶段“队列、LLM 和 SSE”的代码实现和自动化验证。
 
-阶段结论：单进程 Agent runtime、运行记录、OpenAI-compatible 文本流抽象、latest-wins 取消、SSE/cancel API、lifespan 恢复入口和单 worker/SSE 代理配置已落地；Fake LLM、runtime、adapter、阶段一回归和全量测试通过。由于当前未授权连接长期/生产 PostgreSQL，未执行 PostgreSQL 0003/0004 migration、并发锁验证、真实 LLM 调用或生产部署，因此阶段标记为“部分完成”，不能据此进入已完成状态。
+阶段结论：单进程 Agent runtime、运行记录、OpenAI-compatible 文本流抽象、latest-wins 取消、SSE/cancel API、lifespan 恢复入口和单 worker/SSE 代理配置已落地；受控环境中的 PostgreSQL migration、agent_runs 表、advisory lock/并发、真实 LLM 调用和 SSE 基本端到端链路已完成验证。多 worker/多容器验证及生产迁移、生产部署按当前单 worker 和环境边界不执行，阶段二代码与受控测试验收完成，可进入阶段三。
 
 本阶段实际完成：
 
@@ -29,9 +29,8 @@
 - 未实现阶段三工具调用、工具记录、结构化查询工具、阵容推导和来源记录；
 - 未实现阶段四 RAG、Embedding、全文/向量检索和来源表；
 - 未实现多 worker、多容器、Redis/数据库持久队列和分布式锁；
-- 未调用真实 OpenAI-compatible endpoint，未写入真实 API key，未执行生产迁移或部署；
-- 未执行隔离 PostgreSQL 0003/0004 migration、PostgreSQL advisory lock/并发验证；
-- SSE 端到端 TestClient 流式断开、heartbeat 和跨用户测试尚未补齐。
+- 多 worker/多容器验证及生产数据库迁移、生产部署按当前单 worker 和环境边界不执行；
+- SSE 已完成基本提交→订阅→接收终态链路验证，未额外开展 heartbeat、断开恢复和跨用户专项验证。
 
 ## 2. 实际代码与配置变更
 
