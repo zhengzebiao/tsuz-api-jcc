@@ -29,7 +29,9 @@
 - Python compileall 对 app 和 0005 migration 通过。
 - 默认 registry smoke check 通过，工具名称稳定且不包含阶段四 `search_knowledge`。
 - LLM 关闭配置下阶段二定向回归：16 passed；随后修复阶段二显式取消状态可见性竞态后，全量回归为 138 passed（2 条既有第三方 deprecation warnings）。
-- `ruff check`、`compileall` 和 `git diff --check` 通过。
+- 定向 `ruff check`（仅本阶段新增/修改文件）、`compileall` 和 `git diff --check` 通过；全仓库 Ruff 仍有 8 个既有 B008/TRY004 问题，未修改。
+- 阶段三工具和持久化专项测试：5 passed。
+- 全量测试：143 passed，2 条既有第三方 deprecation warnings。
 - 默认 registry smoke check 通过，工具名称稳定且不包含阶段四 `search_knowledge`。
 - `alembic heads` 显示唯一 head `0005_agent_tools_and_sources`。
 - 尚未执行 `alembic check`、`pdm lock --check` 或隔离 PostgreSQL migration；长期数据库状态未被修改。
@@ -39,7 +41,7 @@
 - tool loop 已接入 runtime factory，但仍需补 Fake LLM 多轮、参数拒绝、工具超时和取消专项测试。
 - `AgentRun` 已增加并写入 snapshot/version/revision/hash 元数据；显式 snapshot-scoped repository 仍需扩展更多关联查询并补双 snapshot 集成测试。
 - `tool.started`、`tool.completed`、`tool.failed`、`source` 事件已发送，但终态回放和 API SSE 专项测试待补。
-- 尚未新增阶段三专用自动化测试文件；非法参数不执行、审计状态、双 snapshot、一轮/多轮 tool call、阵容来源和工具取消专项证据待补。
+- 已新增阶段三工具 schema/registry/阵容和 tool/source 持久化专项测试；当前覆盖非法额外字段、白名单危险工具排除、固定 context 元数据、system-derived 标记和审计记录状态。多轮 Fake LLM、双 snapshot 切换、工具取消/超时及 SSE API 专项测试仍待补。
 - 未执行长期共享数据库或生产 migration；未执行真实 provider/生产部署；未执行隔离 PostgreSQL 0005 round-trip。
 
 ## 5. 当前验收映射

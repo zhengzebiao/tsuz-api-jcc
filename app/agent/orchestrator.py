@@ -17,6 +17,7 @@ from app.agent.tools.registry import ToolRegistry
 from app.agent.tools.schemas import SnapshotContext, ToolContext
 from app.conversations import repository
 from app.conversations.models import AgentConversation, AgentMessage
+from app.core.config import settings
 
 EventSink = Callable[[AgentEvent], Awaitable[None]]
 SessionFactory = Callable[[], Session]
@@ -158,6 +159,9 @@ class AgentOrchestrator:
                     try:
                         parsed = definition.input_model.model_validate(call.arguments)
                         execution = await asyncio.wait_for(asyncio.to_thread(definition.execute, context, parsed), self.tool_timeout_seconds)
+                        encoded = json.dumps(execution.output, ensure_ascii=False)
+                        if len(encoded.encode("utf-8")) > settings.agent_tool_output_max_bytes:
+                            raise LLMError("tool_output_limit")
                         result = {"ok": True, **execution.output}
                         await asyncio.to_thread(self._finish_tool_audit, audit_id, "succeeded", result, None)
                         await asyncio.to_thread(self._save_tool_sources, message_id, run_id, audit_id, execution.sources)
