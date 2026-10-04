@@ -7,6 +7,7 @@ import json
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.agent.events import AgentEvent, event
@@ -141,7 +142,7 @@ class AgentOrchestrator:
             if iteration >= self.max_tool_iterations:
                 raise LLMError("agent_tool_limit")
             assistant_calls = [{"id": call.id, "type": "function", "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)}} for call in response.tool_calls]
-            messages.append({"role": "assistant", "content": response.text or "", "tool_calls": assistant_calls})
+            messages.append({"role": "assistant", "content": response.text or None, "tool_calls": assistant_calls})
             results = []
             for call in response.tool_calls:
                 audit_id = await asyncio.to_thread(
@@ -150,28 +151,45 @@ class AgentOrchestrator:
                 if cancel_event.is_set():
                     raise AgentCancelled
                 definition = self.tool_registry.get(call.name)
+                tool_name = call.name[:64]
                 if definition is None:
                     result = {"ok": False, "error": {"code": "tool_not_allowed"}}
                     await asyncio.to_thread(self._finish_tool_audit, audit_id, "rejected", result, "tool_not_allowed")
-                    await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=call.name, tool_call_id=call.id, error_code="tool_not_allowed"))
+                    await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id, error_code="tool_not_allowed"))
                 else:
-                    await sink(event("tool.started", message_id=message_id, run_id=run_id, tool_name=call.name, tool_call_id=call.id))
+                    await sink(event("tool.started", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id))
                     try:
                         parsed = definition.input_model.model_validate(call.arguments)
-                        execution = await asyncio.wait_for(asyncio.to_thread(definition.execute, context, parsed), self.tool_timeout_seconds)
-                        encoded = json.dumps(execution.output, ensure_ascii=False)
-                        if len(encoded.encode("utf-8")) > settings.agent_tool_output_max_bytes:
-                            raise LLMError("tool_output_limit")
-                        result = {"ok": True, **execution.output}
-                        await asyncio.to_thread(self._finish_tool_audit, audit_id, "succeeded", result, None)
-                        await asyncio.to_thread(self._save_tool_sources, message_id, run_id, audit_id, execution.sources)
-                        await sink(event("tool.completed", message_id=message_id, run_id=run_id, tool_name=call.name, tool_call_id=call.id, status="succeeded"))
-                        for source in execution.sources:
-                            await sink(event("source", message_id=message_id, run_id=run_id, source_type=source.source_type, snapshot_id=source.snapshot_id, version=source.version, entity_type=source.entity_type, entity_id=source.entity_id))
-                    except Exception:  # noqa: BLE001 - tool failures are returned safely
-                        result = {"ok": False, "error": {"code": "tool_execution_failed"}}
-                        await asyncio.to_thread(self._finish_tool_audit, audit_id, "failed", result, "tool_execution_failed")
-                        await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=call.name, tool_call_id=call.id, error_code="tool_execution_failed"))
+                    except ValidationError:
+                        result = {"ok": False, "error": {"code": "tool_invalid_arguments"}}
+                        await asyncio.to_thread(self._finish_tool_audit, audit_id, "rejected", result, "tool_invalid_arguments")
+                        await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id, error_code="tool_invalid_arguments"))
+                    else:
+                        try:
+                            execution = await asyncio.wait_for(asyncio.to_thread(definition.execute, context, parsed), self.tool_timeout_seconds)
+                            encoded = json.dumps(execution.output, ensure_ascii=False)
+                            if len(encoded.encode("utf-8")) > settings.agent_tool_output_max_bytes:
+                                result = {"ok": False, "error": {"code": "tool_output_limit"}}
+                                await asyncio.to_thread(self._finish_tool_audit, audit_id, "failed", result, "tool_output_limit")
+                                await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id, error_code="tool_output_limit"))
+                            else:
+                                result = {"ok": True, **execution.output}
+                                await asyncio.to_thread(self._finish_tool_audit, audit_id, "succeeded", result, None)
+                                await asyncio.to_thread(self._save_tool_sources, message_id, run_id, audit_id, execution.sources)
+                                await sink(event("tool.completed", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id, status="succeeded"))
+                                for source in execution.sources:
+                                    await sink(event("source", message_id=message_id, run_id=run_id, source_type=source.source_type, snapshot_id=source.snapshot_id, version=source.version, entity_type=source.entity_type, entity_id=source.entity_id))
+                        except TimeoutError:
+                            result = {"ok": False, "error": {"code": "tool_timeout"}}
+                            await asyncio.to_thread(self._finish_tool_audit, audit_id, "timeout", result, "tool_timeout")
+                            await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id, error_code="tool_timeout"))
+                        except asyncio.CancelledError:
+                            await asyncio.to_thread(self._finish_tool_audit, audit_id, "cancelled", {"ok": False, "error": {"code": "cancelled"}}, "cancelled")
+                            raise
+                        except Exception:  # noqa: BLE001 - tool failures are returned safely
+                            result = {"ok": False, "error": {"code": "tool_execution_failed"}}
+                            await asyncio.to_thread(self._finish_tool_audit, audit_id, "failed", result, "tool_execution_failed")
+                            await sink(event("tool.failed", message_id=message_id, run_id=run_id, tool_name=tool_name, tool_call_id=call.id, error_code="tool_execution_failed"))
                 results.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False)})
             messages.extend(results)
 
@@ -249,8 +267,7 @@ class AgentOrchestrator:
             if run.snapshot_id is not None:
                 snapshot = jcc_repository.get_snapshot(db, mode=run.snapshot_mode or "", snapshot_id=run.snapshot_id)
             else:
-                conversation = db.get(AgentConversation, run.conversation_id)
-                snapshot = jcc_repository.get_current_snapshot(db, conversation.strategy_mode if conversation else "18")
+                snapshot = jcc_repository.get_current_snapshot(db, settings.jcc_data_mode)
             if snapshot is None:
                 return None
             context = SnapshotContext(snapshot.id, snapshot.mode, snapshot.season, snapshot.version, snapshot.revision, snapshot.content_hash)

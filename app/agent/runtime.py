@@ -43,6 +43,9 @@ class ConversationRuntimeManager:
         queue_maxsize: int = 1,
         execution_timeout_seconds: float = 180.0,
         context_messages: int = 10,
+        tool_registry=None,
+        max_tool_iterations: int = 8,
+        tool_timeout_seconds: float = 15.0,
     ) -> None:
         self.session_factory = session_factory
         self.llm_client = llm_client
@@ -52,6 +55,9 @@ class ConversationRuntimeManager:
             llm_client=llm_client,
             session_factory=session_factory,
             context_messages=context_messages,
+            tool_registry=tool_registry,
+            max_tool_iterations=max_tool_iterations,
+            tool_timeout_seconds=tool_timeout_seconds,
         )
         self._runtimes: dict[str, ConversationRuntime] = {}
         self._stopping = False

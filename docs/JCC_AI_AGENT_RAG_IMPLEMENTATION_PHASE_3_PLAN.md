@@ -1,6 +1,6 @@
 # AI Agent / RAG 聊天功能：第三阶段“工具调用和阵容推导”实现计划
 
-> 状态：实施中
+> 状态：已完成（核心验收通过；生产发布与长期数据库运行验证不在本阶段）
 >
 > 总实施方案：[jcc-ai-agent-rag-implementation-plan.md](jcc-ai-agent-rag-implementation-plan.md)
 >

@@ -5,11 +5,35 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 
 import httpx
 
 logger = logging.getLogger(__name__)
+_MAX_ERROR_LOG = 500
+_SECRET_PATTERN = re.compile(
+    r"(?i)([\"']?(?:authorization|api[_-]?key|token|secret|password)[\"']?\s*[:=]\s*[\"']?)[^\"',\s}]+"
+)
+_BEARER_PATTERN = re.compile(r"(?i)bearer\s+[^\s,\"']+")
+
+
+def _safe_error_body(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            if isinstance(error, dict):
+                text = str(error.get("message") or error.get("type") or "provider error")
+            else:
+                text = str(error or payload.get("message") or "provider error")
+        else:
+            text = str(payload)
+    except (ValueError, TypeError):
+        text = response.text
+    text = _SECRET_PATTERN.sub(r"\1[REDACTED]", text)
+    text = _BEARER_PATTERN.sub("Bearer [REDACTED]", text)
+    return text[:_MAX_ERROR_LOG]
 
 
 from app.agent.llm.base import (
@@ -71,7 +95,9 @@ class OpenAICompatibleClient(LLMClient):
             if response.status_code == 429:
                 raise LLMRateLimitError
             if response.status_code >= 400:
-                raise LLMProviderError(f"provider returned status {response.status_code}")
+                detail = _safe_error_body(response)
+                logger.warning("LLM provider request failed status_code=%s detail=%s", response.status_code, detail)
+                raise LLMProviderError(f"provider returned status {response.status_code}: {detail}")
             decoded = response.json()
             choice = (decoded.get("choices") or [{}])[0]
             message = choice.get("message") or {}
@@ -125,13 +151,9 @@ class OpenAICompatibleClient(LLMClient):
                 if response.status_code == 429:
                     raise LLMRateLimitError
                 if response.status_code >= 400:
-                    error_body = (await response.aread()).decode("utf-8", errors="replace")[:2000]
-                    logger.warning(
-                        "LLM provider request failed status_code=%s error_body=%s",
-                        response.status_code,
-                        error_body,
-                    )
-                    raise LLMProviderError(f"provider returned status {response.status_code}")
+                    detail = _safe_error_body(response)
+                    logger.warning("LLM provider request failed status_code=%s detail=%s", response.status_code, detail)
+                    raise LLMProviderError(f"provider returned status {response.status_code}: {detail}")
                 async for line in response.aiter_lines():
                     if not line or line.startswith(":"):
                         continue
