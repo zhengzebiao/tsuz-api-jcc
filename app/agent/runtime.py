@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
@@ -31,6 +32,9 @@ class ConversationRuntime:
     current_run_id: str | None = None
     cancel_event: asyncio.Event | None = None
     subscribers: set[asyncio.Queue[AgentEvent]] = field(default_factory=set)
+    event_history: deque[AgentEvent] = field(default_factory=deque)
+    event_sequence: int = 0
+    event_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     consumer_task: asyncio.Task | None = None
 
 
@@ -148,6 +152,16 @@ class ConversationRuntimeManager:
     @staticmethod
     async def unsubscribe(runtime: ConversationRuntime, subscriber: asyncio.Queue[AgentEvent]) -> None:
         runtime.subscribers.discard(subscriber)
+
+    @staticmethod
+    async def replay(runtime: ConversationRuntime, last_event_id: str | None) -> list[AgentEvent]:
+        if not last_event_id:
+            return list(runtime.event_history)
+        try:
+            cursor = int(last_event_id)
+        except ValueError as exc:
+            raise ValueError("invalid event cursor") from exc
+        return [item for item in runtime.event_history if int(item.event_id or "0") > cursor]
 
     async def _runtime_for(self, conversation_id: str) -> ConversationRuntime:
         async with self._manager_lock:
@@ -311,11 +325,21 @@ class ConversationRuntimeManager:
 
     @staticmethod
     async def _publish(runtime: ConversationRuntime, emitted: AgentEvent) -> None:
-        for subscriber in tuple(runtime.subscribers):
-            try:
-                subscriber.put_nowait(emitted)
-            except asyncio.QueueFull:
-                pass
+        async with runtime.event_lock:
+            runtime.event_sequence += 1
+            emitted = AgentEvent(
+                name=emitted.name,
+                data=emitted.data,
+                event_id=str(runtime.event_sequence),
+            )
+            runtime.event_history.append(emitted)
+            while len(runtime.event_history) > 100:
+                runtime.event_history.popleft()
+            for subscriber in tuple(runtime.subscribers):
+                try:
+                    subscriber.put_nowait(emitted)
+                except asyncio.QueueFull:
+                    continue
 
 
 def _event(name: str, message_id: str, run_id: str, **data: object) -> AgentEvent:

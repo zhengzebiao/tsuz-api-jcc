@@ -227,6 +227,11 @@ async def message_events(
     runtime: ConversationRuntimeManager | None = getattr(request.app.state, "agent_runtime", None)
     if runtime is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent runtime unavailable")
+    last_event_id = request.headers.get("Last-Event-ID")
+    try:
+        replay = await runtime.replay(await runtime._runtime_for(conversation_id), last_event_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid Last-Event-ID") from exc
     conversation_runtime, subscriber = await runtime.subscribe(conversation_id)
     db.expire(message)
     db.expire(run)
@@ -235,7 +240,13 @@ async def message_events(
 
     async def stream() -> AsyncIterator[str]:
         try:
-            yield _status_event(message, run.id)
+            if replay:
+                for emitted in replay:
+                    yield emitted.sse()
+                    if emitted.name in {"message.completed", "message.failed", "message.cancelled"}:
+                        return
+            else:
+                yield _status_event(message, run.id)
             if message.status in {"completed", "failed", "cancelled"}:
                 return
             while True:

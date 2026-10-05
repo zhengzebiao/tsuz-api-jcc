@@ -23,7 +23,7 @@
 
 明确未实现：
 
-- 持久化 SSE event log、Last-Event-ID 回放和 retention；
+- 持久化 SSE event log、进程内 Last-Event-ID 回放和 retention；
 - 上下文摘要；
 - 完整成本统计 API；
 - 完整的限流/SSE 连接并发限制；
