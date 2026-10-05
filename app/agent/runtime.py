@@ -126,8 +126,9 @@ class ConversationRuntimeManager:
         if runtime.current_message_id == message_id:
             if runtime.cancel_event is not None:
                 runtime.cancel_event.set()
-            if runtime.current_task is not None and not runtime.current_task.done():
-                runtime.current_task.cancel()
+            current_task = runtime.current_task
+            if current_task is not None and not current_task.done():
+                current_task.cancel()
             # Persist the terminal state immediately; the orchestrator also performs
             # its conditional cleanup, but cancellation must be observable without
             # waiting for that task's thread handoff to finish.

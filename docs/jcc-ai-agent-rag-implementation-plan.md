@@ -1340,6 +1340,12 @@ pyproject.toml
 
 ## 阶段五：质量和运行完善
 
+> 阶段状态：部分完成（token usage 基础链路、单进程消息限流、readiness 基础接口和 SSE event id 兼容字段已实现；SSE 持久回放、上下文摘要、离线评测和完整成本统计尚未完成）。
+>
+> 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_5_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_5_PLAN.md)
+>
+> 阶段执行记录：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_5_EXECUTION.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_5_EXECUTION.md)
+
 实现：
 
 - 限流；

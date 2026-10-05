@@ -271,6 +271,8 @@ def update_run_status(
     completed_at: datetime | None = None,
     duration_ms: int | None = None,
     output_content: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
     snapshot_id: int | None = None,
     snapshot_mode: str | None = None,
     snapshot_season: str | None = None,
@@ -291,6 +293,9 @@ def update_run_status(
         values["duration_ms"] = duration_ms
     if output_content is not None:
         values["output_content"] = output_content
+    for name, value in (("input_tokens", input_tokens), ("output_tokens", output_tokens)):
+        if value is not None:
+            values[name] = value
     for name, value in (
         ("snapshot_id", snapshot_id),
         ("snapshot_mode", snapshot_mode),

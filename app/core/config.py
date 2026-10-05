@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     agent_tool_input_max_bytes: int = 16384
     agent_tool_output_max_bytes: int = 64000
     agent_source_excerpt_max_chars: int = 1000
+    agent_rate_limit_enabled: bool = False
+    agent_rate_limit_window_seconds: float = 60.0
+    agent_rate_limit_messages: int = 30
+    agent_sse_replay_max_events: int = 100
+    agent_summary_enabled: bool = False
+    agent_summary_trigger_chars: int = 24000
+    llm_input_price_per_million: float | None = None
+    llm_output_price_per_million: float | None = None
     rag_enabled: bool = True
     rag_embedding_provider: str = "fake"
     rag_embedding_model: str = "fake-test-1024"

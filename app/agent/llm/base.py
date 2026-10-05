@@ -8,8 +8,27 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class LLMUsage:
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+    def add(self, other: LLMUsage | None) -> LLMUsage:
+        if other is None:
+            return self
+        return LLMUsage(
+            input_tokens=(self.input_tokens or 0) + other.input_tokens
+            if self.input_tokens is not None or other.input_tokens is not None
+            else None,
+            output_tokens=(self.output_tokens or 0) + other.output_tokens
+            if self.output_tokens is not None or other.output_tokens is not None
+            else None,
+        )
+
+
+@dataclass(frozen=True)
 class TextDelta:
     content: str
+    usage: LLMUsage | None = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +43,7 @@ class LLMResponse:
     text: str
     tool_calls: tuple[ToolCall, ...] = ()
     finish_reason: str | None = None
+    usage: LLMUsage | None = None
 
 
 class LLMError(Exception):

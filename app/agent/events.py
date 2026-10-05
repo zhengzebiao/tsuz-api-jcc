@@ -11,9 +11,11 @@ from datetime import UTC, datetime
 class AgentEvent:
     name: str
     data: dict[str, object]
+    event_id: str | None = None
 
     def sse(self) -> str:
-        return f"event: {self.name}\ndata: {json.dumps(self.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        identifier = f"id: {self.event_id}\n" if self.event_id else ""
+        return f"{identifier}event: {self.name}\ndata: {json.dumps(self.data, ensure_ascii=False, separators=(',', ':'))}\n\n"
 
 
 def event(name: str, *, message_id: str, run_id: str, **data: object) -> AgentEvent:

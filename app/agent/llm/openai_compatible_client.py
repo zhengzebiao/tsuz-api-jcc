@@ -18,6 +18,24 @@ _SECRET_PATTERN = re.compile(
 _BEARER_PATTERN = re.compile(r"(?i)bearer\s+[^\s,\"']+")
 
 
+def _parse_usage(value: object) -> LLMUsage | None:
+    if not isinstance(value, dict):
+        return None
+
+    def integer(*keys: str) -> int | None:
+        for key in keys:
+            candidate = value.get(key)
+            if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate >= 0:
+                return candidate
+        return None
+
+    input_tokens = integer("input_tokens", "prompt_tokens")
+    output_tokens = integer("output_tokens", "completion_tokens")
+    if input_tokens is None and output_tokens is None:
+        return None
+    return LLMUsage(input_tokens=input_tokens, output_tokens=output_tokens)
+
+
 def _safe_error_body(response: httpx.Response) -> str:
     try:
         payload = response.json()
@@ -44,6 +62,7 @@ from app.agent.llm.base import (
     LLMRateLimitError,
     LLMResponse,
     LLMTimeoutError,
+    LLMUsage,
     TextDelta,
     ToolCall,
 )
@@ -111,7 +130,12 @@ class OpenAICompatibleClient(LLMClient):
                 if not isinstance(arguments, dict):
                     raise LLMProviderError("provider returned invalid tool arguments")
                 calls.append(ToolCall(id=str(raw.get("id") or ""), name=str(function.get("name") or ""), arguments=arguments))
-            return LLMResponse(text=str(message.get("content") or ""), tool_calls=tuple(calls), finish_reason=choice.get("finish_reason"))
+            return LLMResponse(
+                text=str(message.get("content") or ""),
+                tool_calls=tuple(calls),
+                finish_reason=choice.get("finish_reason"),
+                usage=_parse_usage(decoded.get("usage")),
+            )
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError from exc
         except (LLMAuthenticationError, LLMRateLimitError, LLMProviderError):
@@ -167,11 +191,10 @@ class OpenAICompatibleClient(LLMClient):
                     except json.JSONDecodeError:
                         continue
                     choices = decoded.get("choices") or []
-                    if not choices:
-                        continue
-                    delta = (choices[0].get("delta") or {}).get("content")
-                    if delta:
-                        yield TextDelta(content=delta)
+                    delta = (choices[0].get("delta") or {}).get("content") if choices else None
+                    usage = _parse_usage(decoded.get("usage"))
+                    if delta or usage is not None:
+                        yield TextDelta(content=str(delta or ""), usage=usage)
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError from exc
         except asyncio.CancelledError:

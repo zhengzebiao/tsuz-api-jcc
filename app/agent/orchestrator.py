@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.agent.events import AgentEvent, event
-from app.agent.llm.base import LLMClient, LLMError
+from app.agent.llm.base import LLMClient, LLMError, LLMUsage
 from app.agent.models import AgentRun, AgentToolCall
 from app.agent.prompts import build_system_prompt
 from app.agent.tools.registry import ToolRegistry
@@ -64,10 +64,11 @@ class AgentOrchestrator:
         history, strategy_mode = await asyncio.to_thread(self._history, conversation_id, message_id)
         system = build_system_prompt(strategy_mode)
         generated: list[str] = []
+        usage = LLMUsage()
         try:
             async with asyncio.timeout(timeout_seconds):
                 if self.tool_registry is None:
-                    await self._stream_text(
+                    usage = await self._stream_text(
                         history, system, generated, message_id, run_id, sink, cancel_event
                     )
                     snapshot = None
@@ -75,7 +76,7 @@ class AgentOrchestrator:
                     snapshot = await asyncio.to_thread(self._resolve_snapshot, run_id)
                     if snapshot is None:
                         raise LLMError("jcc_snapshot_unavailable")
-                    await self._run_tool_loop(
+                    usage = await self._run_tool_loop(
                         history=history,
                         system=system,
                         snapshot=snapshot,
@@ -91,27 +92,31 @@ class AgentOrchestrator:
             if cancel_event.is_set():
                 raise AgentCancelled
             answer = "".join(generated)
-            await asyncio.to_thread(self._complete, conversation_id, message_id, run_id, answer, strategy_mode, started)
+            await asyncio.to_thread(
+                self._complete, conversation_id, message_id, run_id, answer, strategy_mode, started, usage
+            )
             await sink(event("message.completed", message_id=message_id, run_id=run_id, status="completed"))
         except (AgentCancelled, asyncio.CancelledError):
-            await asyncio.to_thread(self._cancel, message_id, run_id, started, "".join(generated))
+            await asyncio.to_thread(self._cancel, message_id, run_id, started, "".join(generated), usage)
             await sink(event("message.cancelled", message_id=message_id, run_id=run_id, status="cancelled"))
         except LLMError as exc:
-            await asyncio.to_thread(self._fail, message_id, run_id, exc.code, started, "".join(generated))
+            await asyncio.to_thread(self._fail, message_id, run_id, exc.code, started, "".join(generated), usage)
             await sink(event("message.failed", message_id=message_id, run_id=run_id, status="failed", error_code=exc.code))
         except TimeoutError:
-            await asyncio.to_thread(self._fail, message_id, run_id, "agent_timeout", started, "".join(generated))
+            await asyncio.to_thread(self._fail, message_id, run_id, "agent_timeout", started, "".join(generated), usage)
             await sink(
                 event("message.failed", message_id=message_id, run_id=run_id, status="failed", error_code="agent_timeout")
             )
         except Exception:  # noqa: BLE001 - persist an opaque provider failure
-            await asyncio.to_thread(self._fail, message_id, run_id, "agent_error", started, "".join(generated))
+            await asyncio.to_thread(self._fail, message_id, run_id, "agent_error", started, "".join(generated), usage)
             await sink(
                 event("message.failed", message_id=message_id, run_id=run_id, status="failed", error_code="agent_error")
             )
 
-    async def _stream_text(self, history, system, generated, message_id, run_id, sink, cancel_event) -> None:
+    async def _stream_text(self, history, system, generated, message_id, run_id, sink, cancel_event) -> LLMUsage:
+        usage = LLMUsage()
         async for delta in self.llm_client.stream(messages=history, system=system):
+            usage = usage.add(delta.usage)
             if cancel_event.is_set():
                 raise AgentCancelled
             generated.append(delta.content)
@@ -120,12 +125,14 @@ class AgentOrchestrator:
                 raise LLMError("output limit exceeded")
             await asyncio.to_thread(self._save_streaming, message_id, run_id, text)
             await sink(event("text.delta", message_id=message_id, run_id=run_id, content=delta.content))
+        return usage
 
     async def _run_tool_loop(
         self, *, history, system, snapshot, generated, conversation_id, message_id, run_id,
         strategy_mode, started, sink, cancel_event,
-    ) -> None:
+    ) -> LLMUsage:
         messages = list(history)
+        total_usage = LLMUsage()
         context = ToolContext(snapshot=snapshot, session_factory=self.session_factory, cancel_event=cancel_event)
         for iteration in range(self.max_tool_iterations + 1):
             if cancel_event.is_set():
@@ -133,12 +140,13 @@ class AgentOrchestrator:
             response = await self.llm_client.complete_with_tools(
                 messages=messages, system=system, tools=self.tool_registry.provider_definitions()
             )
+            total_usage = total_usage.add(response.usage)
             if response.text:
                 generated.append(response.text)
                 await asyncio.to_thread(self._save_streaming, message_id, run_id, "".join(generated))
                 await sink(event("text.delta", message_id=message_id, run_id=run_id, content=response.text))
             if not response.tool_calls:
-                return
+                return total_usage
             if iteration >= self.max_tool_iterations:
                 raise LLMError("agent_tool_limit")
             assistant_calls = [{"id": call.id, "type": "function", "function": {"name": call.name, "arguments": json.dumps(call.arguments, ensure_ascii=False)}} for call in response.tool_calls]
@@ -321,6 +329,7 @@ class AgentOrchestrator:
         answer: str,
         strategy_mode: str,
         started: datetime,
+        usage: LLMUsage,
     ) -> None:
         db = self._session()
         try:
@@ -338,6 +347,8 @@ class AgentOrchestrator:
                 completed_at=now,
                 duration_ms=int((now - started).total_seconds() * 1000),
                 output_content=answer,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
             )
             repository.update_message_status(
                 db,
@@ -353,11 +364,11 @@ class AgentOrchestrator:
         finally:
             db.close()
 
-    def _cancel(self, message_id: str, run_id: str, started: datetime, content: str) -> None:
-        self._finish(message_id, run_id, "cancelled", "cancelled", started, content)
+    def _cancel(self, message_id: str, run_id: str, started: datetime, content: str, usage: LLMUsage) -> None:
+        self._finish(message_id, run_id, "cancelled", "cancelled", started, content, usage)
 
-    def _fail(self, message_id: str, run_id: str, error_code: str, started: datetime, content: str) -> None:
-        self._finish(message_id, run_id, "failed", error_code, started, content)
+    def _fail(self, message_id: str, run_id: str, error_code: str, started: datetime, content: str, usage: LLMUsage) -> None:
+        self._finish(message_id, run_id, "failed", error_code, started, content, usage)
 
     def _finish(
         self,
@@ -367,6 +378,7 @@ class AgentOrchestrator:
         error_code: str,
         started: datetime,
         content: str,
+        usage: LLMUsage,
     ) -> None:
         db = self._session()
         try:
@@ -385,6 +397,8 @@ class AgentOrchestrator:
                 completed_at=now,
                 duration_ms=int((now - started).total_seconds() * 1000),
                 output_content=content,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
             )
             repository.update_message_status(
                 db,

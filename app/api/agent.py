@@ -27,6 +27,7 @@ from app.conversations.schemas import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import InProcessRateLimiter
 from app.deps.auth import CurrentUser, require_scope
 
 router = APIRouter(
@@ -37,6 +38,10 @@ router = APIRouter(
 
 _DB = Depends(get_db)
 _USER = Depends(require_scope("jcc:agent:chat"))
+_MESSAGE_LIMITER = InProcessRateLimiter(
+    limit=settings.agent_rate_limit_messages,
+    window_seconds=settings.agent_rate_limit_window_seconds,
+)
 Limit = Annotated[int, Query(ge=1, le=100)]
 Offset = Annotated[int, Query(ge=0)]
 
@@ -287,6 +292,14 @@ async def create_message(
     current_user: CurrentUser = _USER,
     db: Session = _DB,
 ) -> MessageAcceptedResponse:
+    if settings.agent_rate_limit_enabled:
+        decision = await _MESSAGE_LIMITER.check(f"user:{current_user.user_id}")
+        if not decision.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={"code": "rate_limited", "retry_after_seconds": decision.retry_after_seconds},
+                headers={"Retry-After": str(decision.retry_after_seconds)},
+            )
     try:
         message = service.create_message(
             db,
@@ -301,7 +314,13 @@ async def create_message(
     run = service.ensure_run(db, message=message)
     db.commit()
     runtime: ConversationRuntimeManager | None = getattr(request.app.state, "agent_runtime", None)
-    if runtime is None and settings.llm_model and settings.llm_base_url and settings.llm_api_key:
+    if (
+        "agent_runtime" in request.app.state.__dict__
+        and runtime is None
+        and settings.llm_model
+        and settings.llm_base_url
+        and settings.llm_api_key
+    ):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent runtime unavailable")
     if runtime is not None and run.status == "queued":
         try:
