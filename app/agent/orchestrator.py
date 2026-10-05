@@ -237,6 +237,15 @@ class AgentOrchestrator:
                 trigger_chars=settings.agent_summary_trigger_chars,
                 keep_recent=settings.agent_context_messages,
             )
+            if settings.agent_summary_enabled and len(history) > settings.agent_context_messages:
+                summary = "\n".join(f"{item['role']}: {item['content']}" for item in history[:-settings.agent_context_messages])
+                repository.save_summary(
+                    db,
+                    conversation_id=conversation_id,
+                    through_sequence=messages[-settings.agent_context_messages - 1].sequence,
+                    summary=summary[: settings.agent_summary_trigger_chars],
+                    model="deterministic",
+                )
             if current is not None and current.role == "user":
                 history.append({"role": "user", "content": current.content})
             return history, current.strategy_mode if current is not None else conversation.strategy_mode

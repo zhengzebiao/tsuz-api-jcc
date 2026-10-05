@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     agent_rate_limit_window_seconds: float = 60.0
     agent_rate_limit_messages: int = 30
     agent_sse_replay_max_events: int = 100
+    agent_sse_max_connections_per_user: int = 3
     agent_summary_enabled: bool = False
     agent_summary_trigger_chars: int = 24000
     llm_input_price_per_million: float | None = None

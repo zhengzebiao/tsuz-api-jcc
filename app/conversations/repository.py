@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select, text, update
 from sqlalchemy.orm import Session
 
-from app.agent.models import AgentMessageSource, AgentRun, AgentToolCall
+from app.agent.models import AgentConversationSummary, AgentMessageSource, AgentRun, AgentRunEvent, AgentToolCall
 from app.conversations.models import AgentConversation, AgentMessage
 
 
@@ -214,6 +214,29 @@ def create_tool_call(
     db.add(call)
     db.flush()
     return call
+
+
+def create_run_event(db: Session, *, run: AgentRun, message: AgentMessage, event_name: str, payload: dict, sequence: int | None = None) -> AgentRunEvent:
+    sequence = sequence or (db.scalar(select(func.coalesce(func.max(AgentRunEvent.sequence), 0) + 1).where(AgentRunEvent.run_id == run.id)) or 1)
+    item = AgentRunEvent(run_id=run.id, conversation_id=run.conversation_id, message_id=message.id, sequence=sequence, event_name=event_name, payload=payload)
+    db.add(item)
+    db.flush()
+    return item
+
+
+def list_run_events(db: Session, *, run_id: str, after_sequence: int = 0) -> list[AgentRunEvent]:
+    return list(db.scalars(select(AgentRunEvent).where(AgentRunEvent.run_id == run_id, AgentRunEvent.sequence > after_sequence).order_by(AgentRunEvent.sequence.asc())))
+
+
+def get_latest_summary(db: Session, *, conversation_id: str) -> AgentConversationSummary | None:
+    return db.scalar(select(AgentConversationSummary).where(AgentConversationSummary.conversation_id == conversation_id).order_by(AgentConversationSummary.through_sequence.desc()).limit(1))
+
+
+def save_summary(db: Session, *, conversation_id: str, through_sequence: int, summary: str, model: str | None = None) -> AgentConversationSummary:
+    item = AgentConversationSummary(conversation_id=conversation_id, through_sequence=through_sequence, summary=summary, model=model)
+    db.add(item)
+    db.flush()
+    return item
 
 
 def update_tool_call(

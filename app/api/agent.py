@@ -228,11 +228,17 @@ async def message_events(
     if runtime is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="agent runtime unavailable")
     last_event_id = request.headers.get("Last-Event-ID")
+    conversation_runtime = await runtime._runtime_for(conversation_id)
+    conversation_runtime.replay_run_id = run.id
     try:
-        replay = await runtime.replay(await runtime._runtime_for(conversation_id), last_event_id)
+        replay = await runtime.replay(conversation_runtime, last_event_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid Last-Event-ID") from exc
-    conversation_runtime, subscriber = await runtime.subscribe(conversation_id)
+    if settings.agent_sse_max_connections_per_user > 0:
+        active = (await runtime._runtime_for(conversation_id)).subscriber_users.get(current_user.user_id, 0)
+        if active >= settings.agent_sse_max_connections_per_user:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail={"code": "sse_rate_limited"})
+    conversation_runtime, subscriber = await runtime.subscribe(conversation_id, user_id=current_user.user_id)
     db.expire(message)
     db.expire(run)
     db.refresh(message)
@@ -262,7 +268,7 @@ async def message_events(
                 except TimeoutError:
                     yield heartbeat()
         finally:
-            await runtime.unsubscribe(conversation_runtime, subscriber)
+            await runtime.unsubscribe(conversation_runtime, subscriber, user_id=current_user.user_id)
 
     return StreamingResponse(
         stream(),

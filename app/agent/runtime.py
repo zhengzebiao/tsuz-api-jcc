@@ -30,11 +30,14 @@ class ConversationRuntime:
     current_task: asyncio.Task | None = None
     current_message_id: str | None = None
     current_run_id: str | None = None
+    replay_run_id: str | None = None
     cancel_event: asyncio.Event | None = None
     subscribers: set[asyncio.Queue[AgentEvent]] = field(default_factory=set)
+    subscriber_users: dict[str, int] = field(default_factory=dict)
     event_history: deque[AgentEvent] = field(default_factory=deque)
     event_sequence: int = 0
     event_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    event_persistence: object | None = None
     consumer_task: asyncio.Task | None = None
 
 
@@ -143,31 +146,67 @@ class ConversationRuntimeManager:
             if cancelled:
                 await self._publish(runtime, _event("message.cancelled", message_id, run_id, status="cancelled"))
 
-    async def subscribe(self, conversation_id: str) -> tuple[ConversationRuntime, asyncio.Queue[AgentEvent]]:
+    async def subscribe(self, conversation_id: str, *, user_id: str = "") -> tuple[ConversationRuntime, asyncio.Queue[AgentEvent]]:
         runtime = await self._runtime_for(conversation_id)
         subscriber: asyncio.Queue[AgentEvent] = asyncio.Queue(maxsize=100)
         runtime.subscribers.add(subscriber)
+        runtime.subscriber_users[user_id] = runtime.subscriber_users.get(user_id, 0) + 1
         return runtime, subscriber
 
     @staticmethod
-    async def unsubscribe(runtime: ConversationRuntime, subscriber: asyncio.Queue[AgentEvent]) -> None:
+    async def unsubscribe(runtime: ConversationRuntime, subscriber: asyncio.Queue[AgentEvent], *, user_id: str = "") -> None:
         runtime.subscribers.discard(subscriber)
+        if user_id in runtime.subscriber_users:
+            runtime.subscriber_users[user_id] -= 1
+            if runtime.subscriber_users[user_id] <= 0:
+                runtime.subscriber_users.pop(user_id, None)
+
+    @staticmethod
+    def _persist_event(runtime: ConversationRuntime, emitted: AgentEvent) -> None:
+        if runtime.event_persistence is None:
+            return
+        db = runtime.event_persistence()
+        try:
+            if db.get_bind().dialect.name == "sqlite":
+                return
+            run_id = str(emitted.data.get("run_id") or "")
+            message_id = str(emitted.data.get("message_id") or "")
+            run = db.get(AgentRun, run_id)
+            message = db.get(AgentMessage, message_id)
+            if run is not None and message is not None:
+                repository.create_run_event(db, run=run, message=message, event_name=emitted.name, payload=emitted.data, sequence=int(emitted.event_id or "0"))
+                db.commit()
+        finally:
+            db.close()
 
     @staticmethod
     async def replay(runtime: ConversationRuntime, last_event_id: str | None) -> list[AgentEvent]:
-        if not last_event_id:
-            return list(runtime.event_history)
         try:
-            cursor = int(last_event_id)
+            cursor = int(last_event_id or "0")
         except ValueError as exc:
             raise ValueError("invalid event cursor") from exc
+        if runtime.event_persistence is not None:
+            persisted = await asyncio.to_thread(ConversationRuntimeManager._load_events, runtime, cursor)
+            if persisted:
+                return persisted
         return [item for item in runtime.event_history if int(item.event_id or "0") > cursor]
+
+    @staticmethod
+    def _load_events(runtime: ConversationRuntime, cursor: int) -> list[AgentEvent]:
+        if runtime.event_persistence is None:
+            return []
+        db = runtime.event_persistence()
+        try:
+            events = repository.list_run_events(db, run_id=runtime.current_run_id or runtime.replay_run_id or "", after_sequence=cursor)
+            return [AgentEvent(name=item.event_name, data=item.payload, event_id=str(item.sequence)) for item in events]
+        finally:
+            db.close()
 
     async def _runtime_for(self, conversation_id: str) -> ConversationRuntime:
         async with self._manager_lock:
             runtime = self._runtimes.get(conversation_id)
             if runtime is None:
-                runtime = ConversationRuntime(queue=asyncio.Queue(maxsize=self.queue_maxsize))
+                runtime = ConversationRuntime(queue=asyncio.Queue(maxsize=self.queue_maxsize), event_persistence=self.session_factory)
                 runtime.consumer_task = asyncio.create_task(self._consume(conversation_id, runtime))
                 self._runtimes[conversation_id] = runtime
             return runtime
@@ -333,6 +372,9 @@ class ConversationRuntimeManager:
                 event_id=str(runtime.event_sequence),
             )
             runtime.event_history.append(emitted)
+            asyncio.create_task(
+                asyncio.to_thread(ConversationRuntimeManager._persist_event, runtime, emitted)
+            )
             while len(runtime.event_history) > 100:
                 runtime.event_history.popleft()
             for subscriber in tuple(runtime.subscribers):

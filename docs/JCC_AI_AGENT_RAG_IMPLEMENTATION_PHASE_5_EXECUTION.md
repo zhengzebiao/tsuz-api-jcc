@@ -23,8 +23,6 @@
 
 明确未实现：
 
-- 持久化 SSE event log、进程内 Last-Event-ID 回放和 retention；
-- 持久化摘要状态和异步摘要生成；
 - 完整成本统计 API；
 - 完整的限流/SSE 连接并发限制；
 - readiness 的 active RAG pointer 深度检查；
@@ -42,6 +40,8 @@
 ### 2.2 限流与 readiness
 
 - `app/core/rate_limit.py`：新增有界、带锁的进程内滑动窗口 limiter。
+- `app/agent/models.py`、`alembic/versions/0009_phase5_events_summaries.py`：新增 Agent event log 和 conversation summary 持久化表。
+- `app/agent/runtime.py`、`app/api/agent.py`：事件持久化、`Last-Event-ID` 回放和按用户 SSE 连接上限。
 - `app/api/agent.py`：消息提交按 user id 限流，超限返回稳定错误码和 `Retry-After`；测试中无完整 app lifespan 的路由仍保持兼容。
 - `app/core/config.py`：增加限流、SSE replay 上限、摘要开关/阈值和价格配置占位项；限流默认关闭以保持既有测试及未配置环境兼容，部署可显式开启。
 - `app/api/health.py`：新增 `/readyz`，执行短数据库 `SELECT 1`，报告 runtime/LLM/RAG 状态；`/health` 保持轻量存活语义。
@@ -52,7 +52,7 @@
 
 ## 3. 数据、迁移和状态
 
-新增 0008 migration，为 `agent_runs` 增加 nullable `estimated_cost` 和 `pricing_key`；token 统计继续复用 0004 migration 的字段。SSE 事件和摘要尚未持久化。
+新增 0008 migration，为 `agent_runs` 增加 nullable `estimated_cost` 和 `pricing_key`；新增 0009 migration 持久化 run events 和 conversation summaries；token 统计继续复用 0004 migration 的字段。
 
 ## 4. 测试与验证结果
 
@@ -69,12 +69,12 @@
 
 | 编号 | 验收标准 | 结果 | 验证证据 |
 |---|---|---|---|
-| AC-5-01 | Agent 提交在单进程范围内限流，超限返回 429/Retry-After | 部分通过 | `app/core/rate_limit.py`、Agent API；SSE 建连/运行并发限制尚未实现 |
+| AC-5-01 | Agent 提交在单进程范围内限流，超限返回 429/Retry-After | 通过 | `app/core/rate_limit.py`、Agent API 和用户级 SSE 连接上限 |
 | AC-5-02 | provider usage 被解析、tool loop 累计并保存到 AgentRun | 部分通过 | LLM/orchestrator 代码、0008 migration 和回归测试；尚无新增 usage 专项测试及真实 provider 验证 |
 | AC-5-03 | `/health` 轻量，`/readyz` 区分依赖状态，敏感值不进日志 | 部分通过 | `/readyz` 和既有日志脱敏测试；LLM/RAG 深度检查及新增敏感字段测试尚未完成 |
-| AC-5-04 | 长上下文摘要失败安全回退 | 部分通过 | `app/agent/summary.py` 提供确定性有界压缩和原始历史回退；持久摘要状态/异步生成尚未实现 |
-| AC-5-05 | SSE event id 与 Last-Event-ID 回放，断线不取消 | 未通过 | 仅完成可选 event_id 序列化，尚无持久 event log/replay |
-| AC-5-06 | 离线 eval 不访问真实 provider | 未通过 | 尚未新增 eval 命令和数据集 |
+| AC-5-04 | 长上下文摘要失败安全回退 | 部分通过 | `app/agent/summary.py` 提供确定性有界压缩、原始历史回退和 summary 表写入；异步生成/更完整摘要语义仍有限 |
+| AC-5-05 | SSE event id 与 Last-Event-ID 回放，断线不取消 | 部分通过 | 0009 event log、进程内/数据库回放和连接限制已实现；跨进程竞态与 retention 专项仍待验证 |
+| AC-5-06 | 离线 eval 不访问真实 provider | 通过 | `scripts/eval_agent.py --offline`，2 cases passed |
 
 ## 6. 安全、兼容性与遗留问题
 
@@ -85,14 +85,10 @@
 
 ## 7. 下一步入口
 
-优先补齐：
-
-1. usage 专项测试与可选成本字段/价格配置；
-2. durable event log、事件序号和 `Last-Event-ID` replay；
-3. fallback-safe conversation summary；
-4. offline eval 命令与 JSONL rubric；
-5. 完善 readiness RAG active pointer、SSE 连接限流和新增日志脱敏测试；
-6. 再次执行完整阶段验收并据真实结果更新总方案状态。
+1. 补充真实 PostgreSQL 事件回放并发、retention 和 RAG active pointer readiness 专项验证；
+2. 完善摘要异步生成、摘要内容安全策略和成本统计 API；
+3. 补充新增日志脱敏和 provider usage 专项测试；
+4. 根据受控环境结果重新判定阶段是否可以完成。
 
 ## 8. 文档同步记录
 
@@ -102,4 +98,4 @@
 
 ## 9. 阶段结论
 
-第五阶段当前为部分完成：usage 基础链路、单进程消息限流、readiness 基础接口和 event id 兼容字段已落地，155 项全量测试通过；摘要、离线评测和 SSE 可靠回放等必需能力尚未实现，因此不能标记阶段完成。
+第五阶段当前为部分完成：usage/cost 基础链路、单进程消息及 SSE 连接限流、readiness 基础接口、离线评测、摘要压缩和 0009 event/summary 持久化已落地，160 项全量测试通过；真实 PostgreSQL replay 并发/retention、RAG 深度 readiness、完整成本 API 和摘要异步生成仍待验证或补充，因此不能标记阶段完成。

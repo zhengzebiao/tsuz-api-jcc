@@ -57,6 +57,36 @@ class AgentRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
 
 
+class AgentRunEvent(Base):
+    __tablename__ = "agent_run_events"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="uq_agent_run_events_run_sequence"),
+        Index("ix_agent_run_events_run_sequence", "run_id", "sequence"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_runs.id", ondelete="CASCADE"), nullable=False)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_conversations.id", ondelete="CASCADE"), nullable=False)
+    message_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_messages.id", ondelete="CASCADE"), nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+
+
+class AgentConversationSummary(Base):
+    __tablename__ = "agent_conversation_summaries"
+    __table_args__ = (Index("ix_agent_conversation_summaries_conversation_sequence", "conversation_id", "through_sequence"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("agent_conversations.id", ondelete="CASCADE"), nullable=False)
+    through_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[str] = mapped_column(String(), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now, onupdate=_now)
+
+
 class AgentToolCall(Base):
     __tablename__ = "agent_tool_calls"
     __table_args__ = (
