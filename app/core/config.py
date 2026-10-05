@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     rag_embedding_provider: str = "fake"
     rag_embedding_model: str = "fake-test-1024"
     rag_embedding_dimension: int = 1024
+    rag_embedding_base_url: str = ""
+    rag_embedding_api_key: str = ""
+    rag_embedding_timeout_seconds: float = 120.0
     rag_embedding_batch_size: int = 32
     rag_retrieval_default_limit: int = 5
     rag_retrieval_max_limit: int = 20

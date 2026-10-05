@@ -23,7 +23,7 @@
 
 - 未对共享长期数据库执行 `alembic upgrade head`；
 - 未完成隔离 pgvector PostgreSQL 的 0006 upgrade/downgrade、TSVECTOR/GIN/vector 查询验证；
-- 未调用真实 embedding provider；
+- 未调用真实 embedding provider；本阶段已实现 OpenAI-compatible provider 客户端，但真实 BGE-M3 请求仍待用户配置后执行；
 - 当前 retriever 已提供 snapshot/index 过滤和确定性词项排序骨架，PostgreSQL FTS/vector 混合 SQL 尚待专项实现/验证；
 - 未执行生产部署、生产索引或外部服务长期运行。
 
@@ -44,7 +44,7 @@
 ### 2.2 文档、Embedding 和检索
 
 - `app/rag/document_builder.py`：对英雄、羁绊、装备、强化符文、奇遇、银河生成确定性实体文档；内容 NFC/空白规范化，数据库主键不进入文档，hash 包含 schema version。
-- `app/rag/embedding.py`：provider-neutral 接口、确定性 fake provider 和数量/维度/有限数值校验。
+- `app/rag/embedding.py`：provider-neutral 接口、确定性 fake provider、OpenAI-compatible `/embeddings` client 和数量/维度/有限数值校验；真实 endpoint 仍由部署环境配置。
 - `app/rag/indexer.py`：按 document/hash/model/dimension 复用旧向量，失败回滚并保留旧 current pointer。
 - `app/rag/retriever.py`：按 active index、mode、固定 snapshot 过滤结果并做有界确定性词项排序；真实 PostgreSQL FTS/vector 查询仍待专项补齐。
 - `scripts/index_rag.py`、`pyproject.toml`：提供显式 fake provider 的离线索引命令 `rag-index`；不在聊天请求生成 embedding。
