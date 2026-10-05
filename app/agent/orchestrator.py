@@ -14,6 +14,7 @@ from app.agent.events import AgentEvent, event
 from app.agent.llm.base import LLMClient, LLMError, LLMUsage
 from app.agent.models import AgentRun, AgentToolCall
 from app.agent.prompts import build_system_prompt
+from app.agent.summary import compact_history
 from app.agent.tools.registry import ToolRegistry
 from app.agent.tools.schemas import SnapshotContext, ToolContext
 from app.conversations import repository
@@ -227,11 +228,15 @@ class AgentOrchestrator:
             )
             current = db.get(AgentMessage, current_message_id)
             messages = [item for item in recent if item.id != current_message_id]
-            history = [
-                {"role": item.role, "content": item.content}
-                for item in messages
-                if item.role in ("user", "assistant")
-            ]
+            history = compact_history(
+                [
+                    {"role": item.role, "content": item.content}
+                    for item in messages
+                    if item.role in ("user", "assistant")
+                ],
+                trigger_chars=settings.agent_summary_trigger_chars,
+                keep_recent=settings.agent_context_messages,
+            )
             if current is not None and current.role == "user":
                 history.append({"role": "user", "content": current.content})
             return history, current.strategy_mode if current is not None else conversation.strategy_mode

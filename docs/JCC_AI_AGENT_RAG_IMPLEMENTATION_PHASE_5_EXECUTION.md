@@ -24,7 +24,7 @@
 明确未实现：
 
 - 持久化 SSE event log、进程内 Last-Event-ID 回放和 retention；
-- 上下文摘要；
+- 持久化摘要状态和异步摘要生成；
 - 完整成本统计 API；
 - 完整的限流/SSE 连接并发限制；
 - readiness 的 active RAG pointer 深度检查；
@@ -72,7 +72,7 @@
 | AC-5-01 | Agent 提交在单进程范围内限流，超限返回 429/Retry-After | 部分通过 | `app/core/rate_limit.py`、Agent API；SSE 建连/运行并发限制尚未实现 |
 | AC-5-02 | provider usage 被解析、tool loop 累计并保存到 AgentRun | 部分通过 | LLM/orchestrator 代码、0008 migration 和回归测试；尚无新增 usage 专项测试及真实 provider 验证 |
 | AC-5-03 | `/health` 轻量，`/readyz` 区分依赖状态，敏感值不进日志 | 部分通过 | `/readyz` 和既有日志脱敏测试；LLM/RAG 深度检查及新增敏感字段测试尚未完成 |
-| AC-5-04 | 长上下文摘要失败安全回退 | 未通过 | 尚未实现摘要模块/持久状态 |
+| AC-5-04 | 长上下文摘要失败安全回退 | 部分通过 | `app/agent/summary.py` 提供确定性有界压缩和原始历史回退；持久摘要状态/异步生成尚未实现 |
 | AC-5-05 | SSE event id 与 Last-Event-ID 回放，断线不取消 | 未通过 | 仅完成可选 event_id 序列化，尚无持久 event log/replay |
 | AC-5-06 | 离线 eval 不访问真实 provider | 未通过 | 尚未新增 eval 命令和数据集 |
 
