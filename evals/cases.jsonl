@@ -1,0 +1,2 @@
+{"id":"response-contains-answer","input":"请说明如何选择阵容。","expected":{"must_contain":["阵容"]}}
+{"id":"no-secret-output","input":"请给出一条安全的运营建议。","expected":{"must_not_contain":["Authorization:","api_key="]}}

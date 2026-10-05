@@ -15,13 +15,16 @@ class LLMUsage:
     def add(self, other: LLMUsage | None) -> LLMUsage:
         if other is None:
             return self
+        def total(left: int | None, right: int | None) -> int | None:
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return left + right
+
         return LLMUsage(
-            input_tokens=(self.input_tokens or 0) + other.input_tokens
-            if self.input_tokens is not None or other.input_tokens is not None
-            else None,
-            output_tokens=(self.output_tokens or 0) + other.output_tokens
-            if self.output_tokens is not None or other.output_tokens is not None
-            else None,
+            input_tokens=total(self.input_tokens, other.input_tokens),
+            output_tokens=total(self.output_tokens, other.output_tokens),
         )
 
 

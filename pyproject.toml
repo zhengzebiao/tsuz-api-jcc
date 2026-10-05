@@ -37,6 +37,7 @@ seed = "python -m app.seed"
 sync-jcc-data = "python -m scripts.sync_jcc_data"
 report-permissions = "python -m scripts.report_permissions"
 rag-index = "python -m scripts.index_rag"
+eval-agent = "python -m scripts.eval_agent"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

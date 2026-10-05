@@ -23,10 +23,9 @@
 
 明确未实现：
 
-- 成本估算字段/价格统计；
 - 持久化 SSE event log、Last-Event-ID 回放和 retention；
 - 上下文摘要；
-- 离线 eval 命令和数据集；
+- 完整成本统计 API；
 - 完整的限流/SSE 连接并发限制；
 - readiness 的 active RAG pointer 深度检查；
 - 生产 provider、共享数据库和部署验证。
@@ -53,7 +52,7 @@
 
 ## 3. 数据、迁移和状态
 
-本次未新增 Alembic migration，也未修改表结构。token 统计复用既有 0004 migration 已存在的 nullable `agent_runs.input_tokens/output_tokens` 字段。SSE 事件和摘要尚未持久化。
+新增 0008 migration，为 `agent_runs` 增加 nullable `estimated_cost` 和 `pricing_key`；token 统计继续复用 0004 migration 的字段。SSE 事件和摘要尚未持久化。
 
 ## 4. 测试与验证结果
 
@@ -64,14 +63,14 @@
 | 全量测试 | `./.venv/bin/pytest -q` | 通过 | 155 passed，2 条既有 deprecation warnings |
 | 定向 Ruff | `./.venv/bin/ruff check` 修改 Python 文件 | 通过 | All checks passed |
 | 真实 provider usage | 外部 OpenAI-compatible 服务 | 未执行 | 本阶段未获得生产/外部服务验收授权，使用现有 Fake/Mock 回归 |
-| 迁移/生产验证 | Alembic 共享库、生产部署 | 未执行 | 本次无 schema migration，不连接共享长期数据库 |
+| 迁移/生产验证 | Alembic 本地测试库、生产部署 | 部分执行/未执行 | 本地测试库已执行 0008 upgrade；未连接共享长期库或生产环境 |
 
 ## 5. 阶段验收结果
 
 | 编号 | 验收标准 | 结果 | 验证证据 |
 |---|---|---|---|
 | AC-5-01 | Agent 提交在单进程范围内限流，超限返回 429/Retry-After | 部分通过 | `app/core/rate_limit.py`、Agent API；SSE 建连/运行并发限制尚未实现 |
-| AC-5-02 | provider usage 被解析、tool loop 累计并保存到 AgentRun | 部分通过 | LLM/orchestrator 代码和回归测试；尚无新增 usage 专项测试及真实 provider 验证 |
+| AC-5-02 | provider usage 被解析、tool loop 累计并保存到 AgentRun | 部分通过 | LLM/orchestrator 代码、0008 migration 和回归测试；尚无新增 usage 专项测试及真实 provider 验证 |
 | AC-5-03 | `/health` 轻量，`/readyz` 区分依赖状态，敏感值不进日志 | 部分通过 | `/readyz` 和既有日志脱敏测试；LLM/RAG 深度检查及新增敏感字段测试尚未完成 |
 | AC-5-04 | 长上下文摘要失败安全回退 | 未通过 | 尚未实现摘要模块/持久状态 |
 | AC-5-05 | SSE event id 与 Last-Event-ID 回放，断线不取消 | 未通过 | 仅完成可选 event_id 序列化，尚无持久 event log/replay |

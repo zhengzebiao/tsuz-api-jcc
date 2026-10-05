@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     agent_summary_trigger_chars: int = 24000
     llm_input_price_per_million: float | None = None
     llm_output_price_per_million: float | None = None
+    llm_pricing_key: str = ""
     rag_enabled: bool = True
     rag_embedding_provider: str = "fake"
     rag_embedding_model: str = "fake-test-1024"

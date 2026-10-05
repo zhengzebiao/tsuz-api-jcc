@@ -20,6 +20,18 @@ from app.conversations import repository
 from app.conversations.models import AgentConversation, AgentMessage
 from app.core.config import settings
 
+
+def _estimated_cost(usage: LLMUsage) -> float | None:
+    if usage.input_tokens is None or usage.output_tokens is None:
+        return None
+    if settings.llm_input_price_per_million is None or settings.llm_output_price_per_million is None:
+        return None
+    return (
+        usage.input_tokens * settings.llm_input_price_per_million
+        + usage.output_tokens * settings.llm_output_price_per_million
+    ) / 1_000_000
+
+
 EventSink = Callable[[AgentEvent], Awaitable[None]]
 SessionFactory = Callable[[], Session]
 
@@ -349,6 +361,8 @@ class AgentOrchestrator:
                 output_content=answer,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
+                estimated_cost=_estimated_cost(usage),
+                pricing_key=settings.llm_pricing_key or None,
             )
             repository.update_message_status(
                 db,
@@ -399,6 +413,8 @@ class AgentOrchestrator:
                 output_content=content,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
+                estimated_cost=_estimated_cost(usage),
+                pricing_key=settings.llm_pricing_key or None,
             )
             repository.update_message_status(
                 db,
