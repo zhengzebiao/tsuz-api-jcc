@@ -26,19 +26,28 @@ def build_embedding_client(provider: str | None = None) -> EmbeddingClient:
     raise SystemExit(f"unsupported embedding provider: {selected}")
 
 
+def _print_progress(row, completed: int, total: int, error) -> None:
+    if error is not None:
+        print(f"失败文档: {row.document_id} | 字符数: {len(row.content)} | 原因: {error}", flush=True)
+        return
+    print(f"进度: {completed}/{total} | 当前文档: {row.document_id} | 成功: {completed}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the snapshot-scoped RAG index")
     parser.add_argument("--mode", default=settings.jcc_data_mode)
     parser.add_argument("--batch-size", type=int, default=settings.rag_embedding_batch_size)
     parser.add_argument("--provider", choices=("fake", "openai_compatible"), default=settings.rag_embedding_provider)
     args = parser.parse_args()
+    if args.batch_size < 1:
+        raise SystemExit("batch size must be positive")
     embedding = build_embedding_client(args.provider)
     db = SessionLocal()
     try:
         snapshot = get_current_snapshot(db, args.mode)
         if snapshot is None:
             raise SystemExit("no current snapshot")
-        result = index_snapshot(db, snapshot, embedding, batch_size=args.batch_size)
+        result = index_snapshot(db, snapshot, embedding, batch_size=args.batch_size, progress_callback=_print_progress)
         print({key: result[key] for key in ("index_id", "document_count", "reused_count", "embedded_count", "status")})
         return 0
     finally:

@@ -1309,13 +1309,13 @@ pyproject.toml
 
 ## 阶段四：RAG
 
-> 阶段状态：部分完成（RAG 文档模型、规范化/hash、离线索引骨架、检索工具和测试已落地；隔离 PostgreSQL/pgvector migration、真实全文/向量 SQL 和真实 embedding provider 验证待执行）。
+> 阶段状态：部分完成（RAG 文档模型、规范化/hash、真实 Qwen Embedding 索引、检索工具和流程验证已完成；PostgreSQL `ts_rank`、pgvector cosine 相似度和 FTS/vector 混合排序尚待后续补充；隔离 pgvector migration/SQL round-trip 按当前环境边界不执行）。
 >
 > 阶段实现计划：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_PLAN.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_PLAN.md)
 >
 > 阶段执行记录：[JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_EXECUTION.md](JCC_AI_AGENT_RAG_IMPLEMENTATION_PHASE_4_EXECUTION.md)
 >
-> 本阶段确认：RAG 使用 generation/current pointer 保证索引原子切换；embedding 仅由离线命令生成，测试使用确定性 Fake provider；`search_knowledge` 使用 run 固定 snapshot，精确属性问题仍由结构化工具优先处理。
+> 本阶段确认：RAG 使用 generation/current pointer 保证索引原子切换；已通过 OpenAI-compatible 接口使用 Qwen/Qwen3-Embedding-0.6B 生成 1159 条真实向量并完成 active 索引；`search_knowledge` 使用 run 固定 snapshot，精确属性问题仍由结构化工具优先处理。PostgreSQL 原生排名和混合排序后续补充。
 
 实现：
 

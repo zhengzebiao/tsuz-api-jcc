@@ -24,7 +24,7 @@
 - `rag_documents`、索引 generation/current pointer 表及 0006 migration；
 - 确定性规范化文档和内容哈希；
 - provider-neutral Embedding 接口、确定性测试 provider 和独立索引命令；
-- FTS、vector、混合去重/排序和版本过滤；
+- FTS、vector、混合去重/排序和版本过滤；其中 PostgreSQL `tsvector + ts_rank` 全文排名、pgvector cosine 相似度和 FTS/vector 混合排序仍是本阶段待补实现项，不能以当前关键词排序替代；
 - `search_knowledge` 工具与阶段三来源/SSE 路径复用；
 - 配置、环境示例、单元测试和隔离 PostgreSQL 契约验证。
 

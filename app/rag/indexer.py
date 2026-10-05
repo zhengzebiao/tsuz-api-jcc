@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -9,11 +10,24 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.rag.document_builder import NormalizedDocument, build_snapshot_documents
-from app.rag.embedding import EmbeddingClient, validate_embeddings
+from app.rag.embedding import EmbeddingClient, EmbeddingError, validate_embeddings
+
+
+def _embed_with_retry(embedding, texts, *, retries: int = 3, backoff_seconds: float = 2.0):
+    last_error = None
+    for attempt in range(retries + 1):
+        try:
+            return validate_embeddings(embedding.embed(texts), expected_count=len(texts), dimension=embedding.dimension)
+        except EmbeddingError as exc:
+            last_error = exc
+            if attempt >= retries:
+                raise
+            time.sleep(backoff_seconds * (attempt + 1))
+    raise last_error
 from app.rag.models import RagCurrentIndex, RagDocument, RagIndexRun
 
 
-def index_snapshot(db: Session, snapshot, embedding: EmbeddingClient, *, batch_size: int = 32) -> dict[str, int | str]:
+def index_snapshot(db: Session, snapshot, embedding: EmbeddingClient, *, batch_size: int = 32, progress_callback=None) -> dict[str, int | str]:
     """Build and publish one generation; the current pointer changes only after success."""
     documents = build_snapshot_documents(db, snapshot)
     run = RagIndexRun(mode=snapshot.mode, snapshot_id=snapshot.id, snapshot_content_hash=snapshot.content_hash,
@@ -46,10 +60,24 @@ def index_snapshot(db: Session, snapshot, embedding: EmbeddingClient, *, batch_s
         embedded = len(documents) - len(pending)
         for start in range(0, len(pending), batch_size):
             batch = pending[start : start + batch_size]
-            vectors = validate_embeddings(embedding.embed([row.content for row in batch]), expected_count=len(batch), dimension=embedding.dimension)
-            for row, vector in zip(batch, vectors, strict=True):
+            try:
+                vectors = _embed_with_retry(embedding, [row.content for row in batch])
+                completed = list(zip(batch, vectors, strict=True))
+            except EmbeddingError:
+                completed = []
+                for row in batch:
+                    try:
+                        vector = _embed_with_retry(embedding, [row.content])[0]
+                    except EmbeddingError as document_error:
+                        if progress_callback:
+                            progress_callback(row, embedded, len(documents), document_error)
+                        continue
+                    completed.append((row, vector))
+            for row, vector in completed:
                 row.embedding, row.embedding_model, row.embedding_dimension, row.status = vector, embedding.model_name, embedding.dimension, "embedded"
-            embedded += len(batch)
+                embedded += 1
+                if progress_callback:
+                    progress_callback(row, embedded, len(documents), None)
             db.flush()
         if embedded != len(documents):
             raise RuntimeError("rag_index_incomplete")

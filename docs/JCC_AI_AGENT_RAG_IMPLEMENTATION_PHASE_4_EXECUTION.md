@@ -1,6 +1,6 @@
 # AI Agent / RAG 聊天功能：第四阶段“RAG”执行记录
 
-> 状态：部分完成
+> 状态：部分完成（真实 Embedding 与流程验收完成；PostgreSQL 原生 FTS/vector 排名后续补充）
 >
 > 执行日期：2026-10-04
 >
@@ -10,7 +10,7 @@
 
 ## 1. 执行范围与结论
 
-本阶段已完成 RAG 核心代码契约和离线索引/检索骨架，但 PostgreSQL/pgvector 专项 migration 与真实 SQL 验证尚未执行，因此不能标记为完全完成。现有结构化 Agent 能力和测试回归通过；可进入隔离数据库专项验收，不应据此宣称生产可用。
+本阶段已完成 RAG 核心代码契约、真实 Qwen Embedding 索引和 Agent 检索流程验证；PostgreSQL 原生 `ts_rank`、pgvector cosine 相似度及 FTS/vector 混合排序尚未实现，因此阶段仍标记为部分完成。隔离 pgvector migration/SQL round-trip 按当前环境边界不执行。
 
 实际完成：
 
@@ -22,9 +22,9 @@
 明确未执行或未完成：
 
 - 未对共享长期数据库执行 `alembic upgrade head`；
-- 未完成隔离 pgvector PostgreSQL 的 0006 upgrade/downgrade、TSVECTOR/GIN/vector 查询验证；
-- 未调用真实 embedding provider；本阶段已实现 OpenAI-compatible provider 客户端，但真实 BGE-M3 请求仍待用户配置后执行；
-- 当前 retriever 已提供 snapshot/index 过滤和确定性词项排序骨架，PostgreSQL FTS/vector 混合 SQL 尚待专项实现/验证；
+- 按当前环境边界不执行隔离 pgvector PostgreSQL 的 0006 upgrade/downgrade、TSVECTOR/GIN/vector SQL round-trip；
+- 已通过 OpenAI-compatible 接口配置并调用 `Qwen/Qwen3-Embedding-0.6B`，1159 条文档全部生成真实向量并发布 active generation；
+- 当前 retriever 已提供 snapshot/index 过滤和确定性词项排序；PostgreSQL `tsvector + ts_rank` 全文排名、pgvector cosine 相似度和 FTS/vector 混合排序仍列为后续补充项；
 - 未执行生产部署、生产索引或外部服务长期运行。
 
 ## 2. 实际代码与配置变更
@@ -44,10 +44,10 @@
 ### 2.2 文档、Embedding 和检索
 
 - `app/rag/document_builder.py`：对英雄、羁绊、装备、强化符文、奇遇、银河生成确定性实体文档；内容 NFC/空白规范化，数据库主键不进入文档，hash 包含 schema version。
-- `app/rag/embedding.py`：provider-neutral 接口、确定性 fake provider、OpenAI-compatible `/embeddings` client 和数量/维度/有限数值校验；真实 endpoint 仍由部署环境配置。
+- `app/rag/embedding.py`：provider-neutral 接口、确定性 fake provider、OpenAI-compatible `/embeddings` client 和数量/维度/有限数值校验；已实际调用 Qwen/Qwen3-Embedding-0.6B，返回 1024 维向量。
 - `app/rag/indexer.py`：按 document/hash/model/dimension 复用旧向量，失败回滚并保留旧 current pointer。
-- `app/rag/retriever.py`：按 active index、mode、固定 snapshot 过滤结果并做有界确定性词项排序；真实 PostgreSQL FTS/vector 查询仍待专项补齐。
-- `scripts/index_rag.py`、`pyproject.toml`：提供显式 fake provider 的离线索引命令 `rag-index`；不在聊天请求生成 embedding。
+- `app/rag/retriever.py`：按 active index、mode、固定 snapshot 过滤结果并做有界确定性词项排序；尚未接入 PostgreSQL `ts_rank`、pgvector cosine distance 和混合分数合并。
+- `scripts/index_rag.py`、`pyproject.toml`：提供 `fake`/`openai_compatible` 离线索引命令 `rag-index`；不在聊天请求生成 embedding；已通过进度、重试和批量失败降级增强执行可观测性。
 
 ### 2.3 Agent、配置和测试
 
@@ -67,8 +67,9 @@
 
 | 差异 | 计划内容 | 实际实施 | 原因 | 影响与处理 |
 | --- | --- | --- | --- | --- |
-| PostgreSQL 混合 SQL | 阶段四计划要求 FTS/vector 混合检索 | 当前先落地 snapshot 过滤和确定性检索骨架，未完成真实 FTS/vector 查询 | 当前环境未执行隔离 pgvector 专项，避免伪造验收 | AC-4-01/部分工具链可验证；AC-4-04、PostgreSQL 专项待补，不标记完成 |
-| 生产 embedding | 计划保留 provider 边界 | 实际仅提供 fake provider 和显式 fake CLI | 未配置/未授权真实 embedding 服务 | 生产索引前必须实现并配置真实 provider |
+| PostgreSQL 混合 SQL | 阶段四计划要求 FTS/vector 混合检索 | 已完成真实 Embedding 索引和流程验证，但 `ts_rank`/cosine/混合 SQL 尚未实现 | 当前先保留关键词排序，原生 SQL 后续补充 | AC-4-01/AC-4-04 仍部分满足，后续补齐原生排名 |
+| 生产 embedding | 计划保留 provider 边界 | 已通过 OpenAI-compatible 接口配置并调用 Qwen/Qwen3-Embedding-0.6B，1159 条全部 active | 用户已提供可用第三方 Embedding 服务 | 真实 provider 验收已满足 |
+| PostgreSQL 隔离验证 | 计划要求隔离 pgvector migration/SQL round-trip | 按当前环境边界不执行 | 用户明确不执行隔离 pgvector migration/SQL | 记录为环境边界，不伪造通过 |
 
 ## 5. 测试与验证结果
 
@@ -82,17 +83,17 @@
 | Diff 检查 | `git diff --check` | 通过 | 无 whitespace 错误 |
 | Alembic heads | `./.venv/bin/alembic heads` | 通过 | 唯一 head `0006_rag_documents_and_indexes` |
 | Alembic check | `./.venv/bin/alembic check` | 未完成 | 当前长期数据库未升级到 0006，工具报告 `Target database is not up to date`；未执行共享库迁移 |
-| 隔离 pgvector migration/SQL | 临时 PostgreSQL | 未执行 | 当前阶段未启动/授权临时数据库；不能以 SQLite 替代 |
+| 隔离 pgvector migration/SQL | 临时 PostgreSQL | 按环境边界不执行 | 用户明确不执行隔离 pgvector migration/SQL；不以 SQLite 替代真实 PostgreSQL 证据 |
 
 ## 6. 阶段验收结果
 
 | 编号 | 验收标准 | 结果 | 验证证据 |
 | --- | --- | --- | --- |
-| AC-4-01 | 当前版本过滤正确 | 部分通过 | `app/rag/retriever.py` 强制 active index/mode/snapshot 条件；真实 PostgreSQL 查询待补 |
+| AC-4-01 | 当前版本过滤正确 | 部分通过 | `app/rag/retriever.py` 强制 active index/mode/snapshot 条件；真实 PostgreSQL FTS/vector 查询待补 |
 | AC-4-02 | 未变化文档复用向量 | 部分通过 | `app/rag/indexer.py` 有 hash/model/dimension 兼容复用；完整 DB round-trip 待验证 |
 | AC-4-03 | 索引失败不影响旧索引 | 部分通过 | indexer 异常回滚且不更新 current pointer；隔离数据库故障演练待验证 |
 | AC-4-04 | 精确问题优先走结构化查询 | 部分通过 | tool description 明确 structured-first，保留原结构化工具；完整意图路由/真实混合 SQL 待补 |
-| AC-4-05 | 引用来源能够追溯 | 通过代码契约 | `rag_document` SourceRecord 包含 document/version/rank/score/excerpt，并复用 orchestrator source persistence；数据库专项待验证 |
+| AC-4-05 | 引用来源能够追溯 | 通过流程验证 | `rag_document` SourceRecord 包含 document/version/rank/score/excerpt，并在 Agent 实际检索中返回 source；隔离数据库专项按环境边界不执行 |
 
 ## 7. 安全、兼容性与可观测性核对
 
@@ -100,11 +101,11 @@
 
 - 工具使用静态白名单、Pydantic `extra=forbid`，不接受 snapshot/version 覆盖或任意 SQL；
 - embedding 配置只从环境读取，测试与执行记录未写入真实 Secret；
-- content、excerpt、工具输出均有边界；真实 provider 未调用。
+- content、excerpt、工具输出均有边界；真实 Qwen provider 已调用，但 Key 未进入代码、日志或文档。
 
 ### 兼容性
 
-- 阶段二/三回归全量 149 tests 通过；
+- 阶段二/三及 Embedding provider 回归全量 155 tests 通过；
 - 默认 `.env` 含真实 LLM 配置，未清空时隔离 API 测试会按既有设计返回 runtime unavailable（503）；验证命令显式清空 LLM 配置后通过；
 - 0006 尚未应用到共享长期数据库，未宣称现有数据库已升级。
 
