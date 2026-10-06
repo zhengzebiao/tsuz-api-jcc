@@ -350,6 +350,42 @@ jobs:
       OPENAPI_ENABLED: ${{ vars.OPENAPI_ENABLED }}
       DOCS_ENABLED: ${{ vars.DOCS_ENABLED }}
       REDOC_ENABLED: ${{ vars.REDOC_ENABLED }}
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+      LLM_MODEL: ${{ vars.LLM_MODEL }}
+      LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_TIMEOUT_SECONDS: ${{ vars.LLM_TIMEOUT_SECONDS }}
+      LLM_MAX_TOKENS: ${{ vars.LLM_MAX_TOKENS }}
+      AGENT_QUEUE_MAXSIZE: ${{ vars.AGENT_QUEUE_MAXSIZE }}
+      AGENT_EXECUTION_TIMEOUT_SECONDS: ${{ vars.AGENT_EXECUTION_TIMEOUT_SECONDS }}
+      AGENT_SHUTDOWN_TIMEOUT_SECONDS: ${{ vars.AGENT_SHUTDOWN_TIMEOUT_SECONDS }}
+      AGENT_SSE_HEARTBEAT_SECONDS: ${{ vars.AGENT_SSE_HEARTBEAT_SECONDS }}
+      AGENT_CONTEXT_MESSAGES: ${{ vars.AGENT_CONTEXT_MESSAGES }}
+      AGENT_MAX_TOOL_ITERATIONS: ${{ vars.AGENT_MAX_TOOL_ITERATIONS }}
+      AGENT_TOOL_TIMEOUT_SECONDS: ${{ vars.AGENT_TOOL_TIMEOUT_SECONDS }}
+      AGENT_TOOL_INPUT_MAX_BYTES: ${{ vars.AGENT_TOOL_INPUT_MAX_BYTES }}
+      AGENT_TOOL_OUTPUT_MAX_BYTES: ${{ vars.AGENT_TOOL_OUTPUT_MAX_BYTES }}
+      AGENT_SOURCE_EXCERPT_MAX_CHARS: ${{ vars.AGENT_SOURCE_EXCERPT_MAX_CHARS }}
+      AGENT_RATE_LIMIT_ENABLED: ${{ vars.AGENT_RATE_LIMIT_ENABLED }}
+      AGENT_RATE_LIMIT_WINDOW_SECONDS: ${{ vars.AGENT_RATE_LIMIT_WINDOW_SECONDS }}
+      AGENT_RATE_LIMIT_MESSAGES: ${{ vars.AGENT_RATE_LIMIT_MESSAGES }}
+      AGENT_SSE_REPLAY_MAX_EVENTS: ${{ vars.AGENT_SSE_REPLAY_MAX_EVENTS }}
+      AGENT_SSE_MAX_CONNECTIONS_PER_USER: ${{ vars.AGENT_SSE_MAX_CONNECTIONS_PER_USER }}
+      AGENT_SUMMARY_ENABLED: ${{ vars.AGENT_SUMMARY_ENABLED }}
+      AGENT_SUMMARY_TRIGGER_CHARS: ${{ vars.AGENT_SUMMARY_TRIGGER_CHARS }}
+      RAG_ENABLED: ${{ vars.RAG_ENABLED }}
+      RAG_EMBEDDING_PROVIDER: ${{ vars.RAG_EMBEDDING_PROVIDER }}
+      RAG_EMBEDDING_BASE_URL: ${{ vars.RAG_EMBEDDING_BASE_URL }}
+      RAG_EMBEDDING_API_KEY: ${{ secrets.RAG_EMBEDDING_API_KEY }}
+      RAG_EMBEDDING_TIMEOUT_SECONDS: ${{ vars.RAG_EMBEDDING_TIMEOUT_SECONDS }}
+      RAG_EMBEDDING_MODEL: ${{ vars.RAG_EMBEDDING_MODEL }}
+      RAG_EMBEDDING_DIMENSION: ${{ vars.RAG_EMBEDDING_DIMENSION }}
+      RAG_EMBEDDING_BATCH_SIZE: ${{ vars.RAG_EMBEDDING_BATCH_SIZE }}
+      RAG_RETRIEVAL_DEFAULT_LIMIT: ${{ vars.RAG_RETRIEVAL_DEFAULT_LIMIT }}
+      RAG_RETRIEVAL_MAX_LIMIT: ${{ vars.RAG_RETRIEVAL_MAX_LIMIT }}
+      LLM_INPUT_PRICE_PER_MILLION: ${{ vars.LLM_INPUT_PRICE_PER_MILLION }}
+      LLM_OUTPUT_PRICE_PER_MILLION: ${{ vars.LLM_OUTPUT_PRICE_PER_MILLION }}
+      LLM_PRICING_KEY: ${{ vars.LLM_PRICING_KEY }}
       DEPLOY_HEALTH_RETRIES: ${{ vars.DEPLOY_HEALTH_RETRIES }}
       DEPLOY_HEALTH_INTERVAL_SECONDS: ${{ vars.DEPLOY_HEALTH_INTERVAL_SECONDS }}
       DEPLOY_PUBLIC_HEALTH_URL: ${{ vars.DEPLOY_PUBLIC_HEALTH_URL }}
@@ -497,6 +533,42 @@ jobs:
               "OPENAPI_ENABLED": os.environ.get("OPENAPI_ENABLED") or "false",
               "DOCS_ENABLED": os.environ.get("DOCS_ENABLED") or "false",
               "REDOC_ENABLED": os.environ.get("REDOC_ENABLED") or "false",
+              "LLM_PROVIDER": os.environ.get("LLM_PROVIDER") or "openai_compatible",
+              "LLM_MODEL": os.environ.get("LLM_MODEL") or "",
+              "LLM_BASE_URL": os.environ.get("LLM_BASE_URL") or "",
+              "LLM_API_KEY": os.environ.get("LLM_API_KEY") or "",
+              "LLM_TIMEOUT_SECONDS": os.environ.get("LLM_TIMEOUT_SECONDS") or "120",
+              "LLM_MAX_TOKENS": os.environ.get("LLM_MAX_TOKENS") or "2048",
+              "AGENT_QUEUE_MAXSIZE": os.environ.get("AGENT_QUEUE_MAXSIZE") or "1",
+              "AGENT_EXECUTION_TIMEOUT_SECONDS": os.environ.get("AGENT_EXECUTION_TIMEOUT_SECONDS") or "180",
+              "AGENT_SHUTDOWN_TIMEOUT_SECONDS": os.environ.get("AGENT_SHUTDOWN_TIMEOUT_SECONDS") or "10",
+              "AGENT_SSE_HEARTBEAT_SECONDS": os.environ.get("AGENT_SSE_HEARTBEAT_SECONDS") or "15",
+              "AGENT_CONTEXT_MESSAGES": os.environ.get("AGENT_CONTEXT_MESSAGES") or "10",
+              "AGENT_MAX_TOOL_ITERATIONS": os.environ.get("AGENT_MAX_TOOL_ITERATIONS") or "8",
+              "AGENT_TOOL_TIMEOUT_SECONDS": os.environ.get("AGENT_TOOL_TIMEOUT_SECONDS") or "15",
+              "AGENT_TOOL_INPUT_MAX_BYTES": os.environ.get("AGENT_TOOL_INPUT_MAX_BYTES") or "16384",
+              "AGENT_TOOL_OUTPUT_MAX_BYTES": os.environ.get("AGENT_TOOL_OUTPUT_MAX_BYTES") or "64000",
+              "AGENT_SOURCE_EXCERPT_MAX_CHARS": os.environ.get("AGENT_SOURCE_EXCERPT_MAX_CHARS") or "1000",
+              "AGENT_RATE_LIMIT_ENABLED": os.environ.get("AGENT_RATE_LIMIT_ENABLED") or "false",
+              "AGENT_RATE_LIMIT_WINDOW_SECONDS": os.environ.get("AGENT_RATE_LIMIT_WINDOW_SECONDS") or "60",
+              "AGENT_RATE_LIMIT_MESSAGES": os.environ.get("AGENT_RATE_LIMIT_MESSAGES") or "30",
+              "AGENT_SSE_REPLAY_MAX_EVENTS": os.environ.get("AGENT_SSE_REPLAY_MAX_EVENTS") or "100",
+              "AGENT_SSE_MAX_CONNECTIONS_PER_USER": os.environ.get("AGENT_SSE_MAX_CONNECTIONS_PER_USER") or "3",
+              "AGENT_SUMMARY_ENABLED": os.environ.get("AGENT_SUMMARY_ENABLED") or "false",
+              "AGENT_SUMMARY_TRIGGER_CHARS": os.environ.get("AGENT_SUMMARY_TRIGGER_CHARS") or "24000",
+              "RAG_ENABLED": os.environ.get("RAG_ENABLED") or "true",
+              "RAG_EMBEDDING_PROVIDER": os.environ.get("RAG_EMBEDDING_PROVIDER") or "fake",
+              "RAG_EMBEDDING_BASE_URL": os.environ.get("RAG_EMBEDDING_BASE_URL") or "",
+              "RAG_EMBEDDING_API_KEY": os.environ.get("RAG_EMBEDDING_API_KEY") or "",
+              "RAG_EMBEDDING_TIMEOUT_SECONDS": os.environ.get("RAG_EMBEDDING_TIMEOUT_SECONDS") or "120",
+              "RAG_EMBEDDING_MODEL": os.environ.get("RAG_EMBEDDING_MODEL") or "fake-test-1024",
+              "RAG_EMBEDDING_DIMENSION": os.environ.get("RAG_EMBEDDING_DIMENSION") or "1024",
+              "RAG_EMBEDDING_BATCH_SIZE": os.environ.get("RAG_EMBEDDING_BATCH_SIZE") or "32",
+              "RAG_RETRIEVAL_DEFAULT_LIMIT": os.environ.get("RAG_RETRIEVAL_DEFAULT_LIMIT") or "5",
+              "RAG_RETRIEVAL_MAX_LIMIT": os.environ.get("RAG_RETRIEVAL_MAX_LIMIT") or "20",
+              "LLM_INPUT_PRICE_PER_MILLION": os.environ.get("LLM_INPUT_PRICE_PER_MILLION") or "",
+              "LLM_OUTPUT_PRICE_PER_MILLION": os.environ.get("LLM_OUTPUT_PRICE_PER_MILLION") or "",
+              "LLM_PRICING_KEY": os.environ.get("LLM_PRICING_KEY") or "",
           }
 
           lines = []

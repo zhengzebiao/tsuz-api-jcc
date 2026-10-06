@@ -58,6 +58,53 @@ def test_sync_workflow_scans_both_environments_without_lifecycle_changes() -> No
         assert f'"${{compose[@]}}" {command}' not in workflow
 
 
+def test_deploy_propagates_agent_llm_and_rag_configuration() -> None:
+    workflow = _read(DEPLOY_WORKFLOW)
+    expected_variables = (
+        "LLM_PROVIDER",
+        "LLM_MODEL",
+        "LLM_BASE_URL",
+        "LLM_TIMEOUT_SECONDS",
+        "LLM_MAX_TOKENS",
+        "AGENT_QUEUE_MAXSIZE",
+        "AGENT_EXECUTION_TIMEOUT_SECONDS",
+        "AGENT_SHUTDOWN_TIMEOUT_SECONDS",
+        "AGENT_SSE_HEARTBEAT_SECONDS",
+        "AGENT_CONTEXT_MESSAGES",
+        "AGENT_MAX_TOOL_ITERATIONS",
+        "AGENT_TOOL_TIMEOUT_SECONDS",
+        "AGENT_TOOL_INPUT_MAX_BYTES",
+        "AGENT_TOOL_OUTPUT_MAX_BYTES",
+        "AGENT_SOURCE_EXCERPT_MAX_CHARS",
+        "AGENT_RATE_LIMIT_ENABLED",
+        "AGENT_RATE_LIMIT_WINDOW_SECONDS",
+        "AGENT_RATE_LIMIT_MESSAGES",
+        "AGENT_SSE_REPLAY_MAX_EVENTS",
+        "AGENT_SSE_MAX_CONNECTIONS_PER_USER",
+        "AGENT_SUMMARY_ENABLED",
+        "AGENT_SUMMARY_TRIGGER_CHARS",
+        "RAG_ENABLED",
+        "RAG_EMBEDDING_PROVIDER",
+        "RAG_EMBEDDING_BASE_URL",
+        "RAG_EMBEDDING_TIMEOUT_SECONDS",
+        "RAG_EMBEDDING_MODEL",
+        "RAG_EMBEDDING_DIMENSION",
+        "RAG_EMBEDDING_BATCH_SIZE",
+        "RAG_RETRIEVAL_DEFAULT_LIMIT",
+        "RAG_RETRIEVAL_MAX_LIMIT",
+        "LLM_INPUT_PRICE_PER_MILLION",
+        "LLM_OUTPUT_PRICE_PER_MILLION",
+        "LLM_PRICING_KEY",
+    )
+    for variable in expected_variables:
+        assert f'"{variable}": os.environ.get("{variable}")' in workflow
+    for secret in ("LLM_API_KEY", "RAG_EMBEDDING_API_KEY"):
+        assert f"{secret}: ${{{{ secrets.{secret} }}}}" in workflow
+        assert f'"{secret}": os.environ.get("{secret}")' in workflow
+    assert 'LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}' in workflow
+    assert 'RAG_EMBEDDING_BASE_URL: ${{ vars.RAG_EMBEDDING_BASE_URL }}' in workflow
+
+
 def test_deploy_scans_only_after_normal_release() -> None:
     workflow = _read(DEPLOY_WORKFLOW)
     start = workflow.index("- name: Scan JCC data after normal release")

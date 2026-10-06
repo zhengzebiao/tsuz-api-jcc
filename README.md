@@ -241,6 +241,10 @@ Recommended Variables:
 | `JCC_APP_ID` / `MAIN_APP_ID` / `MAIN_*_URL` | App-to-app identity and main service endpoints |
 | `JCC_DATA_VOLUME_NAME` | Environment-specific persistent raw volume name; test/product must differ |
 | `CORS_ALLOW_ORIGINS` / health variables | Browser policy and deploy health checks |
+| `LLM_PROVIDER` / `LLM_MODEL` / `LLM_BASE_URL` / `LLM_TIMEOUT_SECONDS` / `LLM_MAX_TOKENS` | Agent model provider and request limits |
+| `AGENT_*` runtime controls | Queue, timeout, tool, SSE, rate-limit, and summary settings |
+| `RAG_ENABLED` / `RAG_EMBEDDING_*` / `RAG_RETRIEVAL_*` | RAG indexing provider, vector dimensions, and retrieval limits |
+| `LLM_INPUT_PRICE_PER_MILLION` / `LLM_OUTPUT_PRICE_PER_MILLION` / `LLM_PRICING_KEY` | Usage cost calculation settings |
 | `POSTGRES_CONTAINER_NAME` / `POSTGRES_DB` / `POSTGRES_USER` / ports | JCC Init infrastructure settings |
 | `INIT_HEALTH_RETRIES` / `INIT_HEALTH_INTERVAL_SECONDS` | JCC Init readiness window |
 
@@ -253,6 +257,7 @@ Recommended Secrets:
 | `DATABASE_URL` / `REDIS_URL` / `MAIN_REDIS_URL` | JCC, JCC Redis, and main Redis connection strings |
 | `JWT_PUBLIC_KEY` / `SERVICE_TOKEN_PUBLIC_KEY` | Verification public keys; JCC receives no private key |
 | `JCC_APP_SECRET` | JCC App credential for calling main |
+| `LLM_API_KEY` / `RAG_EMBEDDING_API_KEY` | External LLM and embedding provider credentials |
 | `POSTGRES_PASSWORD` | JCC PostgreSQL password consumed only by Init |
 
 `tsuz-api-jcc` uses only `JWT_PUBLIC_KEY` for user-token verification. Never add `JWT_PRIVATE_KEY` to this service. Main App ID and JCC App ID are non-secret identifiers; one-time App secrets and keys remain in the environment secret store.
