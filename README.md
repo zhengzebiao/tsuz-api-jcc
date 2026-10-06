@@ -429,6 +429,14 @@ The repository-managed `.github/workflows/sync-jcc-data.yml` runs every six hour
 
 Deployment mounts a Compose-managed named volume at `/app/raw`, so raw revisions and `.sync.lock` survive API container replacement. Configure an environment-specific `JCC_DATA_VOLUME_NAME` such as `tsuz-api-jcc-test-raw` or `tsuz-api-jcc-product-raw`; using one shared value would mix raw history across environments, especially when both deployments share a Docker host. Keep deployed `JCC_DATA_RAW_DIR=raw`; pointing it elsewhere bypasses this volume. `JCC_DATA_MODE`, `JCC_DATA_MODE_NAME`, `JCC_DATA_SYNC_TIMEOUT_SECONDS`, and `JCC_DATA_SYNC_RETRIES` provide the remaining non-secret defaults, while explicit CLI options override path, timeout and retry values. The command logs version, revision, hash prefix, directory and result without logging raw payloads, Service Tokens, App Secrets, or database credentials.
 
+To build the RAG index from the currently imported snapshot, use the manually triggered `.github/workflows/index-rag.yml` workflow and select `test` or `product`. It connects to the selected deployment host and runs the command inside the already-running, healthy `api` container:
+
+```bash
+pdm run rag-index --provider openai_compatible --batch-size 1
+```
+
+The deployment host's `.env` must contain the OpenAI-compatible embedding settings (`RAG_EMBEDDING_BASE_URL`, `RAG_EMBEDDING_API_KEY`, `RAG_EMBEDDING_MODEL`, and `RAG_EMBEDDING_DIMENSION`); the workflow does not copy or print the API key. Apply migrations and import a current JCC snapshot first. The workflow does not build, pull, restart containers, or remove database volumes. It serializes with deploy and data-sync operations for the selected environment, and a failed index build preserves the previous active index. Run `test` first and review the progress and final summary before running `product`.
+
 ## JCC Structured Data API
 
 The structured data API reads only the database snapshot selected by `jcc_current_snapshots`; the API process does not read or expose files under `raw/`. Every endpoint requires a user Access Token with `jcc:data:read`:
