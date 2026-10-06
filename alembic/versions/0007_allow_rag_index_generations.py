@@ -16,7 +16,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.drop_constraint("uq_rag_index_runs_key", "rag_index_runs", type_="unique")
+    op.execute(
+        """
+        ALTER TABLE rag_index_runs
+        DROP CONSTRAINT IF EXISTS uq_rag_index_runs_key
+        """
+    )
 
 
 def downgrade() -> None:
