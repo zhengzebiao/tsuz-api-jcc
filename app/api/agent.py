@@ -31,7 +31,7 @@ from app.core.rate_limit import InProcessRateLimiter
 from app.deps.auth import CurrentUser, require_scope
 
 router = APIRouter(
-    prefix="/api/agent",
+    prefix="/jcc/agent",
     tags=["agent"],
     responses={401: {"description": "Invalid user token"}, 403: {"description": "Insufficient user scope"}},
 )

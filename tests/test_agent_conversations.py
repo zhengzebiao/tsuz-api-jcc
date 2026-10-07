@@ -51,7 +51,7 @@ def headers(*, user_id: str = "user-1", scope: str = "jcc:agent:chat") -> dict[s
 
 def create_conversation(client: TestClient, *, user_id: str = "user-1", **payload) -> dict:
     response = client.post(
-        "/api/agent/conversations",
+        "/jcc/agent/conversations",
         headers=headers(user_id=user_id),
         json={"title": "Test conversation", **payload},
     )
@@ -61,7 +61,7 @@ def create_conversation(client: TestClient, *, user_id: str = "user-1", **payloa
 
 def test_conversation_requires_scope_and_is_user_isolated(agent_context: TestClient) -> None:
     missing_scope = agent_context.post(
-        "/api/agent/conversations",
+        "/jcc/agent/conversations",
         headers=headers(scope="user:read"),
         json={"title": "Test"},
     )
@@ -69,7 +69,7 @@ def test_conversation_requires_scope_and_is_user_isolated(agent_context: TestCli
 
     conversation = create_conversation(agent_context, user_id="owner")
     response = agent_context.get(
-        f"/api/agent/conversations/{conversation['id']}",
+        f"/jcc/agent/conversations/{conversation['id']}",
         headers=headers(user_id="other"),
     )
     assert response.status_code == 404
@@ -81,7 +81,7 @@ def test_conversation_crud_and_archive_is_idempotent(agent_context: TestClient) 
     assert conversation["status"] == "active"
 
     updated = agent_context.patch(
-        f"/api/agent/conversations/{conversation['id']}",
+        f"/jcc/agent/conversations/{conversation['id']}",
         headers=headers(),
         json={"title": "Updated", "strategy_mode": "gamble"},
     )
@@ -90,20 +90,20 @@ def test_conversation_crud_and_archive_is_idempotent(agent_context: TestClient) 
     assert updated.json()["strategy_mode"] == "gamble"
 
     archived = agent_context.post(
-        f"/api/agent/conversations/{conversation['id']}/archive",
+        f"/jcc/agent/conversations/{conversation['id']}/archive",
         headers=headers(),
     )
     assert archived.status_code == 200
     assert archived.json()["status"] == "archived"
     archived_again = agent_context.post(
-        f"/api/agent/conversations/{conversation['id']}/archive",
+        f"/jcc/agent/conversations/{conversation['id']}/archive",
         headers=headers(),
     )
     assert archived_again.status_code == 200
     assert archived_again.json()["archived_at"] == archived.json()["archived_at"]
 
     cannot_update = agent_context.patch(
-        f"/api/agent/conversations/{conversation['id']}",
+        f"/jcc/agent/conversations/{conversation['id']}",
         headers=headers(),
         json={"title": "Nope"},
     )
@@ -112,7 +112,7 @@ def test_conversation_crud_and_archive_is_idempotent(agent_context: TestClient) 
 
 def test_message_mode_sequence_pagination_and_idempotency(agent_context: TestClient) -> None:
     conversation = create_conversation(agent_context, strategy_mode="operation")
-    url = f"/api/agent/conversations/{conversation['id']}/messages"
+    url = f"/jcc/agent/conversations/{conversation['id']}/messages"
 
     first = agent_context.post(
         url,
@@ -158,7 +158,7 @@ def test_message_mode_sequence_pagination_and_idempotency(agent_context: TestCli
 def test_empty_conversation_update_is_rejected(agent_context: TestClient) -> None:
     conversation = create_conversation(agent_context)
     response = agent_context.patch(
-        f"/api/agent/conversations/{conversation['id']}",
+        f"/jcc/agent/conversations/{conversation['id']}",
         headers=headers(),
         json={},
     )
@@ -168,13 +168,13 @@ def test_empty_conversation_update_is_rejected(agent_context: TestClient) -> Non
 def test_archived_conversation_rejects_new_message(agent_context: TestClient) -> None:
     conversation = create_conversation(agent_context)
     archive = agent_context.post(
-        f"/api/agent/conversations/{conversation['id']}/archive",
+        f"/jcc/agent/conversations/{conversation['id']}/archive",
         headers=headers(),
     )
     assert archive.status_code == 200
 
     response = agent_context.post(
-        f"/api/agent/conversations/{conversation['id']}/messages",
+        f"/jcc/agent/conversations/{conversation['id']}/messages",
         headers=headers(),
         json={"content": "not accepted"},
     )
@@ -192,7 +192,7 @@ def test_archived_conversation_rejects_new_message(agent_context: TestClient) ->
 )
 def test_conversation_validation(agent_context: TestClient, payload: dict) -> None:
     response = agent_context.post(
-        "/api/agent/conversations",
+        "/jcc/agent/conversations",
         headers=headers(),
         json=payload,
     )
@@ -201,7 +201,7 @@ def test_conversation_validation(agent_context: TestClient, payload: dict) -> No
 
 def test_message_validation_and_client_cannot_supply_server_fields(agent_context: TestClient) -> None:
     conversation = create_conversation(agent_context)
-    url = f"/api/agent/conversations/{conversation['id']}/messages"
+    url = f"/jcc/agent/conversations/{conversation['id']}/messages"
     too_long = agent_context.post(url, headers=headers(), json={"content": "x" * 8001})
     assert too_long.status_code == 422
     extra = agent_context.post(

@@ -34,9 +34,9 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title=settings.service_name,
-        docs_url="/docs" if settings.docs_enabled else None,
-        redoc_url="/redoc" if settings.redoc_enabled else None,
-        openapi_url="/openapi.json" if settings.openapi_enabled else None,
+        docs_url="/jcc/docs" if settings.docs_enabled else None,
+        redoc_url="/jcc/redoc" if settings.redoc_enabled else None,
+        openapi_url="/jcc/openapi.json" if settings.openapi_enabled else None,
         lifespan=lifespan,
     )
     app.add_middleware(RequestIdMiddleware)
