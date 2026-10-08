@@ -92,8 +92,8 @@ def test_runtime_executes_text_and_preserves_user_message(database) -> None:
             assert agent_run.status == "completed"
             assert agent_run.output_content == "answer done"
             assert [(item.role, item.content) for item in messages] == [
-                ("user", "question"),
                 ("assistant", "answer done"),
+                ("user", "question"),
             ]
         finally:
             db.close()

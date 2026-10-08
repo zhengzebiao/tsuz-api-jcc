@@ -44,7 +44,7 @@ def list_conversations(db: Session, user_id: str, *, limit: int, offset: int) ->
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     items = list(
         db.scalars(
-            base.order_by(AgentConversation.updated_at.desc(), AgentConversation.id.desc())
+            base.order_by(AgentConversation.id.asc())
             .limit(limit)
             .offset(offset)
         )
@@ -427,7 +427,7 @@ def list_messages(db: Session, *, conversation_id: str, limit: int, offset: int)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     items = list(
         db.scalars(
-            base.order_by(AgentMessage.sequence.asc(), AgentMessage.id.asc()).limit(limit).offset(offset)
+            base.order_by(AgentMessage.sequence.desc(), AgentMessage.id.desc()).limit(limit).offset(offset)
         )
     )
     return Page(items=items, total=total)
